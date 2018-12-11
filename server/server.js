@@ -12,14 +12,23 @@ const io = socketIO(server)
 app.use(express.static(publicPath))
 
 io.on('connection', (socket) => {
-    console.log('New user connected');
+  console.log('New user connected');
 
-    socket.on('disconnect', () => {
-        console.log('User disconnected');
-    })
+  socket.emit('newMessage', {
+    from: "pollob",
+    text: "Hey, Let's chat!!",
+    createdAt: 233
+  })
+
+  socket.on('createMessage', (msg) => {
+    console.log('createMessage', msg);
+  })
+
+  socket.on('disconnect', () => {
+    console.log('User disconnected');
+  })
 })
 
-
 server.listen(port, () => {
-    console.log('Server is running on port 5000')
+  console.log('Server is running on port 5000')
 })
