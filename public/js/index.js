@@ -9,15 +9,15 @@ socket.on('disconnect', function () {
 })
 
 socket.on('newMessage', function (message) {
-  console.log("New message", message);
-
-  let li = jQuery('<li></li>').text(`${message.from}: ${message.text}`)
+  let formattedTime = moment(message.createdAt).format('h:mm a')
+  let li = jQuery('<li></li>').text(`${message.from} ${formattedTime}: ${message.text}`)
 
   jQuery('#messages').append(li)
 })
 
 socket.on('newLocationMessage', function (message) {
-  let li = jQuery('<li></li>').text(`${message.from}: `)
+  let formattedTime = moment(message.createdAt).format('h:mm a')
+  let li = jQuery('<li></li>').text(`${message.from} ${formattedTime}: `)
   let a = jQuery('<a target="_blank">My current location</a>').attr('href', message.url)
 
   li.append(a)
@@ -28,12 +28,14 @@ jQuery('#message-form').on('submit', function (e) {
   e.preventDefault()
   let messageTextbox = jQuery('[name=message]')
 
-  socket.emit('createMessage', {
-    from: 'User',
-    text: messageTextbox.val()
-  }, function () {
-    messageTextbox.val('')
-  })
+  if (!!messageTextbox.val().trim()) {
+    socket.emit('createMessage', {
+      from: 'User',
+      text: messageTextbox.val()
+    }, function () {
+      messageTextbox.val('')
+    })
+  }
 })
 
 let locationButton = jQuery('#send-location')
