@@ -2,7 +2,7 @@
 
 This is a simple chat app based on node and socket.
 
-Live at https://myonetimechat.herokuapp.com/
+Live at https://wqdfkc-3000.csb.app/
 
 ## Features
 - No registration required
