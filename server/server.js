@@ -63,5 +63,5 @@ io.on('connection', (socket) => {
 });
 
 server.listen(port, () => {
-  console.log(`Server is up on ${port}`);
+  console.log(`Server is up on http://localhost:${port}`);
 });

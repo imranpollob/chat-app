@@ -2,6 +2,8 @@
 
 This is a simple chat app based on node and socket.
 
+![screenshot](screenshot.png)
+
 ## Features
 - No registration required
 - Create a chat room
