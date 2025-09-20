@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { MoonIcon, SunIcon, PlusIcon, UserPlusIcon } from '@heroicons/react/24/outline';
+import { Bars3Icon, MoonIcon, SunIcon, PlusIcon, UserPlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -84,6 +84,9 @@ const ChatLayout = () => {
   const discoverFilterRef = useRef({ ...defaultDiscoverFilter });
   const [selectedDiscoverRoom, setSelectedDiscoverRoom] = useState(null);
   const [joiningRoomId, setJoiningRoomId] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const openSidebar = useCallback(() => setIsSidebarOpen(true), []);
+  const closeSidebar = useCallback(() => setIsSidebarOpen(false), []);
 
   const activeRoom = useMemo(
     () => joinedRooms.find((room) => room.id === activeRoomId) || null,
@@ -175,6 +178,7 @@ const ChatLayout = () => {
   const handleSelectRoom = (roomId) => {
     setActiveView('home');
     setActiveRoomId(roomId);
+    closeSidebar();
   };
 
   const handleCreateRoom = async (event) => {
@@ -318,6 +322,12 @@ const ChatLayout = () => {
   useEffect(() => {
     loadJoinedRooms();
   }, [loadJoinedRooms]);
+
+  useEffect(() => {
+    if (activeView !== 'home') {
+      setIsSidebarOpen(false);
+    }
+  }, [activeView]);
 
   useEffect(() => {
     if (activeView !== 'discover') return;
@@ -610,16 +620,40 @@ const ChatLayout = () => {
     scrollMessagesToBottom(behavior);
   }, [messages, messagesLoading, scrollMessagesToBottom]);
 
-  const renderHomeView = () => (
-    <div className="flex flex-col gap-6 lg:flex-row">
-      <aside className="w-full shrink-0 space-y-4 lg:w-80">
+  const renderJoinedSidebarContent = (variant = 'static') => {
+    const containerClass = clsx('space-y-4', variant === 'drawer' ? 'flex h-full flex-col' : '');
+    const listSectionClass = clsx(variant === 'drawer' ? 'flex-1' : '');
+    const listContainerClass = clsx(
+      variant === 'drawer' ? 'h-full' : '',
+      'space-y-2 overflow-y-auto rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900/60'
+    );
+
+    return (
+      <div className={containerClass}>
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Joined Rooms
-          </h2>
+          <div className="flex items-center gap-2">
+            {variant === 'drawer' ? (
+              <button
+                type="button"
+                onClick={closeSidebar}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                title="Close"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            ) : null}
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Joined Rooms
+            </h2>
+          </div>
           <button
             type="button"
-            onClick={() => setIsCreateRoomOpen(true)}
+            onClick={() => {
+              setIsCreateRoomOpen(true);
+              if (variant === 'drawer') {
+                closeSidebar();
+              }
+            }}
             className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-brand-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-brand-300 dark:hover:bg-slate-800"
             title="Create room"
           >
@@ -640,69 +674,93 @@ const ChatLayout = () => {
           />
         </div>
 
-        <div className="space-y-2 overflow-y-auto rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900/60">
-          {joinedLoading ? (
-            <p className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400">Loading rooms...</p>
-          ) : filteredJoinedRooms.length > 0 ? (
-            filteredJoinedRooms.map((room) => {
-              const preview = room.lastMessage
-                ? `${room.lastMessage.sender ? `${room.lastMessage.sender}: ` : ''}${room.lastMessage.text}`
-                : room.description || 'No messages yet.';
-              return (
-                <button
-                  key={room.id}
-                  type="button"
-                  onClick={() => handleSelectRoom(room.id)}
-                  className={clsx(
-                    'w-full rounded-xl border px-4 py-3 text-left transition shadow-sm',
-                    room.id === activeRoomId
-                      ? 'border-brand-400 bg-brand-50 text-slate-900 dark:border-brand-500 dark:bg-brand-500/10 dark:text-slate-100'
-                      : 'border-transparent bg-white hover:border-brand-300 hover:bg-brand-50/70 dark:bg-slate-900/50 dark:hover:border-brand-500/30 dark:hover:bg-slate-900'
-                  )}
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">{room.name}</p>
-                    <span className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      {room.lastActivity ? dayjs(room.lastActivity).fromNow() : '—'}
-                    </span>
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{preview}</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                    <span className="capitalize">{room.type}</span>
-                    <span>• {room.memberCount} member{room.memberCount === 1 ? '' : 's'}</span>
-                    <span>• Owner: {room.isOwner ? 'You' : room.owner}</span>
-                    {room.pendingCount > 0 && room.isOwner && room.type === 'request' ? (
-                      <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
-                        {room.pendingCount} pending
+        <div className={listSectionClass}>
+          <div className={listContainerClass}>
+            {joinedLoading ? (
+              <p className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400">Loading rooms...</p>
+            ) : filteredJoinedRooms.length > 0 ? (
+              filteredJoinedRooms.map((room) => {
+                const preview = room.lastMessage
+                  ? `${room.lastMessage.sender ? `${room.lastMessage.sender}: ` : ''}${room.lastMessage.text}`
+                  : room.description || 'No messages yet.';
+                return (
+                  <button
+                    key={room.id}
+                    type="button"
+                    onClick={() => handleSelectRoom(room.id)}
+                    className={clsx(
+                      'w-full rounded-xl border px-4 py-3 text-left transition shadow-sm',
+                      room.id === activeRoomId
+                        ? 'border-brand-400 bg-brand-50 text-slate-900 dark:border-brand-500 dark:bg-brand-500/10 dark:text-slate-100'
+                        : 'border-transparent bg-white hover:border-brand-300 hover:bg-brand-50/70 dark:bg-slate-900/50 dark:hover:border-brand-500/30 dark:hover:bg-slate-900'
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">{room.name}</p>
+                      <span className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        {room.lastActivity ? dayjs(room.lastActivity).fromNow() : '—'}
                       </span>
-                    ) : null}
-                  </div>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{preview}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                      <span className="capitalize">{room.type}</span>
+                      <span>• {room.memberCount} member{room.memberCount === 1 ? '' : 's'}</span>
+                      <span>• Owner: {room.isOwner ? 'You' : room.owner}</span>
+                      {room.pendingCount > 0 && room.isOwner && room.type === 'request' ? (
+                        <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
+                          {room.pendingCount} pending
+                        </span>
+                      ) : null}
+                    </div>
+                  </button>
+                );
+              })
+            ) : joinedRooms.length === 0 ? (
+              <div className="space-y-3 rounded-xl border border-dashed border-slate-300 bg-slate-50/60 px-4 py-5 text-center dark:border-slate-700 dark:bg-slate-900/40">
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                  You haven’t joined any rooms yet.
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Visit the Discover page to browse public and request-only communities.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveView('discover');
+                    closeSidebar();
+                  }}
+                  className="rounded-xl bg-brand-500 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                >
+                  Go to Discover
                 </button>
-              );
-            })
-          ) : joinedRooms.length === 0 ? (
-            <div className="space-y-3 rounded-xl border border-dashed border-slate-300 bg-slate-50/60 px-4 py-5 text-center dark:border-slate-700 dark:bg-slate-900/40">
-              <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                You haven’t joined any rooms yet.
-              </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Visit the Discover page to browse public and request-only communities.
-              </p>
-              <button
-                type="button"
-                onClick={() => setActiveView('discover')}
-                className="rounded-xl bg-brand-500 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
-              >
-                Go to Discover
-              </button>
-            </div>
-          ) : (
-            <p className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400">No rooms found for that search.</p>
-          )}
+              </div>
+            ) : (
+              <p className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400">No rooms found for that search.</p>
+            )}
+          </div>
         </div>
+      </div>
+    );
+  };
+
+  const renderHomeView = () => (
+    <div className="flex flex-col gap-6 lg:flex-row">
+      <aside className="hidden lg:flex lg:w-80 lg:flex-col">
+        {renderJoinedSidebarContent()}
       </aside>
 
       <section className="flex-1 space-y-4">
+        <div className="flex items-center justify-between lg:hidden">
+          <button
+            type="button"
+            onClick={openSidebar}
+            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            <Bars3Icon className="h-5 w-5" />
+            Rooms
+          </button>
+        </div>
+
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-md transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900">
           {activeRoom ? (
             <>
@@ -1028,6 +1086,38 @@ const ChatLayout = () => {
       <main className="mx-auto max-w-6xl flex-1 px-6 py-6">
         {activeView === 'home' ? renderHomeView() : renderDiscoverView()}
       </main>
+
+      <Transition show={isSidebarOpen} as={Fragment}>
+        <Dialog className="relative z-50 lg:hidden" onClose={closeSidebar}>
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-200"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-150"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur" />
+          </Transition.Child>
+
+          <div className="fixed inset-0 flex">
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-200"
+              enterFrom="-translate-x-full opacity-0"
+              enterTo="translate-x-0 opacity-100"
+              leave="ease-in duration-150"
+              leaveFrom="translate-x-0 opacity-100"
+              leaveTo="-translate-x-full opacity-0"
+            >
+              <Dialog.Panel className="flex h-full w-full max-w-xs flex-col bg-white p-6 shadow-2xl transition-colors duration-300 dark:bg-slate-950">
+                {renderJoinedSidebarContent('drawer')}
+              </Dialog.Panel>
+            </Transition.Child>
+          </div>
+        </Dialog>
+      </Transition>
 
       <Transition show={isCreateRoomOpen} as={Fragment}>
         <Dialog className="relative z-50" onClose={() => setIsCreateRoomOpen(false)}>
