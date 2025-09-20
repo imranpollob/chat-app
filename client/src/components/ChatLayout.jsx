@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { MoonIcon, SunIcon, PlusIcon, UserPlusIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
@@ -64,6 +64,7 @@ const ChatLayout = () => {
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [pendingState, setPendingState] = useState(false);
+  const messagesContainerRef = useRef(null);
 
   const [roomRequests, setRoomRequests] = useState([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
@@ -232,6 +233,20 @@ const ChatLayout = () => {
       setInviting(false);
     }
   };
+
+  const scrollMessagesToBottom = useCallback((behavior = 'smooth', force = false) => {
+    const element = messagesContainerRef.current;
+    if (!element) return;
+
+    const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+    const isNearBottom = distanceFromBottom < 96;
+
+    if (!force && !isNearBottom) {
+      return;
+    }
+
+    element.scrollTo({ top: element.scrollHeight, behavior });
+  }, []);
 
   const handleMessageSubmit = (event) => {
     event.preventDefault();
@@ -445,6 +460,17 @@ const ChatLayout = () => {
     }
   }, [activeRoomId]);
 
+  useLayoutEffect(() => {
+    if (!activeRoomId || messagesLoading) return;
+    scrollMessagesToBottom('auto', true);
+  }, [activeRoomId, messagesLoading, pendingState, scrollMessagesToBottom]);
+
+  useLayoutEffect(() => {
+    if (messagesLoading || messages.length === 0) return;
+    const behavior = messages.length <= 1 ? 'auto' : 'smooth';
+    scrollMessagesToBottom(behavior);
+  }, [messages, messagesLoading, scrollMessagesToBottom]);
+
   const renderHomeView = () => (
     <div className="flex flex-col gap-6 lg:flex-row">
       <aside className="w-full shrink-0 space-y-4 lg:w-80">
@@ -554,7 +580,10 @@ const ChatLayout = () => {
                 </div>
               </div>
 
-              <div className="h-[420px] space-y-3 overflow-y-auto bg-slate-50/70 px-6 py-6 transition-colors duration-300 dark:bg-slate-950/40">
+              <div
+                ref={messagesContainerRef}
+                className="h-[420px] space-y-3 overflow-y-auto bg-slate-50/70 px-6 py-6 transition-colors duration-300 dark:bg-slate-950/40"
+              >
                 {messagesLoading ? (
                   <p className="text-sm text-slate-500 dark:text-slate-400">Loading conversation...</p>
                 ) : pendingState ? (
