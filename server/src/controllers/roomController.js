@@ -12,7 +12,9 @@ const normalizeId = (value) => {
   return value.toString();
 };
 
-const formatRoom = (room, currentUserId) => {
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const formatRoom = (room, currentUserId, extras = {}) => {
   const memberIds = Array.isArray(room.members)
     ? room.members.map((member) => normalizeId(member)).filter(Boolean)
     : [];
@@ -31,8 +33,58 @@ const formatRoom = (room, currentUserId) => {
     pendingCount: room.pendingRequests?.length || 0,
     isOwner,
     isMember,
+    hasPendingRequest: extras.hasPendingRequest ?? false,
+    lastMessage: extras.lastMessage || null,
+    lastActivity: extras.lastActivity || room.updatedAt || room.createdAt,
     createdAt: room.createdAt
   };
+};
+
+const getLastMessagesForRooms = async (roomIds) => {
+  if (!Array.isArray(roomIds) || roomIds.length === 0) {
+    return new Map();
+  }
+
+  const lastMessages = await Message.aggregate([
+    { $match: { room: { $in: roomIds } } },
+    { $sort: { timestamp: -1 } },
+    {
+      $group: {
+        _id: '$room',
+        messageId: { $first: '$_id' },
+        text: { $first: '$text' },
+        timestamp: { $first: '$timestamp' },
+        senderId: { $first: '$sender' }
+      }
+    },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'senderId',
+        foreignField: '_id',
+        as: 'sender'
+      }
+    },
+    {
+      $addFields: {
+        sender: { $arrayElemAt: ['$sender', 0] }
+      }
+    }
+  ]);
+
+  const byRoomId = new Map();
+  lastMessages.forEach((entry) => {
+    const key = normalizeId(entry._id);
+    byRoomId.set(key, {
+      id: normalizeId(entry.messageId),
+      text: entry.text,
+      timestamp: entry.timestamp,
+      sender: entry.sender ? entry.sender.username : null,
+      senderId: entry.sender ? normalizeId(entry.sender._id) : null
+    });
+  });
+
+  return byRoomId;
 };
 
 exports.listRooms = asyncHandler(async (req, res) => {
@@ -65,6 +117,82 @@ exports.listRooms = asyncHandler(async (req, res) => {
   const formatted = Array.from(uniqueRooms.values())
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((room) => formatRoom(room, currentUserId));
+
+  res.json({ rooms: formatted });
+});
+
+exports.getJoinedRooms = asyncHandler(async (req, res) => {
+  const currentUserId = req.user?.id;
+
+  if (!currentUserId) {
+    throw createError(401, 'Authentication required');
+  }
+
+  const search = (req.query.search || '').trim();
+
+  const filter = {
+    $or: [{ owner: currentUserId }, { members: currentUserId }]
+  };
+
+  if (search) {
+    filter.name = { $regex: new RegExp(escapeRegex(search), 'i') };
+  }
+
+  const rooms = await Room.find(filter)
+    .populate('owner', 'username')
+    .lean();
+
+  const roomIds = rooms.map((room) => room._id);
+  const lastMessages = await getLastMessagesForRooms(roomIds);
+
+  const formatted = rooms
+    .map((room) => {
+      const lastMessage = lastMessages.get(normalizeId(room._id));
+      const lastActivity = lastMessage?.timestamp || room.updatedAt || room.createdAt;
+      return formatRoom(room, currentUserId, {
+        lastMessage: lastMessage || null,
+        lastActivity
+      });
+    })
+    .sort((a, b) => {
+      const dateA = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
+      const dateB = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
+      return dateB - dateA;
+    });
+
+  res.json({ rooms: formatted });
+});
+
+exports.discoverRooms = asyncHandler(async (req, res) => {
+  const currentUserId = req.user?.id || null;
+  const search = (req.query.search || '').trim();
+  const requestedType = (req.query.type || '').toLowerCase();
+
+  const allowedTypes = ['public', 'request'];
+  const filter = { type: { $in: allowedTypes } };
+
+  if (requestedType && allowedTypes.includes(requestedType)) {
+    filter.type = requestedType;
+  }
+
+  if (search) {
+    filter.name = { $regex: new RegExp(escapeRegex(search), 'i') };
+  }
+
+  const rooms = await Room.find(filter)
+    .sort({ name: 1 })
+    .populate('owner', 'username')
+    .lean();
+
+  const formatted = rooms.map((room) => {
+    const pendingIds = Array.isArray(room.pendingRequests)
+      ? room.pendingRequests.map((userId) => normalizeId(userId))
+      : [];
+
+    return formatRoom(room, currentUserId, {
+      hasPendingRequest: currentUserId ? pendingIds.includes(currentUserId.toString()) : false
+    });
+  });
 
   res.json({ rooms: formatted });
 });

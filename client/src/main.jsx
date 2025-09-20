@@ -12,7 +12,7 @@ createRoot(document.getElementById('root')).render(
       <AuthProvider>
         <App />
         <Toaster
-          position="top-right"
+          position="top-center"
           toastOptions={{
             className:
               'rounded-xl border border-slate-200 bg-white text-slate-900 shadow-lg dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100',

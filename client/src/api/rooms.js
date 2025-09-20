@@ -5,6 +5,29 @@ export const fetchRooms = async () => {
   return data.rooms;
 };
 
+export const fetchJoinedRooms = async ({ search } = {}) => {
+  const params = new URLSearchParams();
+  if (search) {
+    params.set('search', search);
+  }
+  const query = params.toString();
+  const { data } = await httpClient.get(`/rooms/joined${query ? `?${query}` : ''}`);
+  return data.rooms;
+};
+
+export const fetchDiscoverRooms = async ({ search, type } = {}) => {
+  const params = new URLSearchParams();
+  if (search) {
+    params.set('search', search);
+  }
+  if (type && ['public', 'request'].includes(type)) {
+    params.set('type', type);
+  }
+  const query = params.toString();
+  const { data } = await httpClient.get(`/rooms/discover${query ? `?${query}` : ''}`);
+  return data.rooms;
+};
+
 export const createRoom = async (payload) => {
   const { data } = await httpClient.post('/rooms', payload);
   return data.room;

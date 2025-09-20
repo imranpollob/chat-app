@@ -9,7 +9,8 @@ import {
   createRoom,
   fetchMessages,
   fetchRequests,
-  fetchRooms,
+  fetchJoinedRooms,
+  fetchDiscoverRooms,
   inviteUser,
   updateRequest
 } from '../api/rooms';
@@ -43,13 +44,21 @@ const defaultRoomForm = {
   type: 'public'
 };
 
+const defaultDiscoverFilter = {
+  search: '',
+  type: 'all'
+};
+
 const ChatLayout = () => {
   const { user, logout } = useAuth();
   const { socket, status: socketStatus, isReady } = useSocket();
   const { isDark, toggleTheme } = useTheme();
 
-  const [rooms, setRooms] = useState([]);
-  const [roomsLoading, setRoomsLoading] = useState(true);
+  const [activeView, setActiveView] = useState('home');
+
+  const [joinedRooms, setJoinedRooms] = useState([]);
+  const [joinedLoading, setJoinedLoading] = useState(true);
+  const [joinedSearch, setJoinedSearch] = useState('');
   const [activeRoomId, setActiveRoomId] = useState(null);
 
   const [messages, setMessages] = useState([]);
@@ -66,29 +75,69 @@ const ChatLayout = () => {
   const [inviteUsername, setInviteUsername] = useState('');
   const [inviting, setInviting] = useState(false);
 
-  const activeRoom = useMemo(
-    () => rooms.find((room) => room.id === activeRoomId) || null,
-    [rooms, activeRoomId]
-  );
+  const [discoverRooms, setDiscoverRooms] = useState([]);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
+  const [discoverSearchInput, setDiscoverSearchInput] = useState('');
+  const [discoverTypeInput, setDiscoverTypeInput] = useState('all');
+  const [discoverFilter, setDiscoverFilter] = useState(defaultDiscoverFilter);
+  const [selectedDiscoverRoom, setSelectedDiscoverRoom] = useState(null);
+  const [joiningRoomId, setJoiningRoomId] = useState(null);
 
+  const activeRoom = useMemo(
+    () => joinedRooms.find((room) => room.id === activeRoomId) || null,
+    [joinedRooms, activeRoomId]
+  );
   const isOwner = Boolean(activeRoom?.isOwner);
 
-  const loadRooms = useCallback(async () => {
+  const filteredJoinedRooms = useMemo(() => {
+    if (!joinedSearch.trim()) {
+      return joinedRooms;
+    }
+    const query = joinedSearch.trim().toLowerCase();
+    return joinedRooms.filter((room) => room.name.toLowerCase().includes(query));
+  }, [joinedRooms, joinedSearch]);
+
+  const loadJoinedRooms = useCallback(async ({ focusRoomId } = {}) => {
     try {
-      setRoomsLoading(true);
-      const data = await fetchRooms();
-      setRooms(data);
-      if (!activeRoomId && data.length > 0) {
-        setActiveRoomId(data[0].id);
-      }
+      setJoinedLoading(true);
+      const data = await fetchJoinedRooms();
+      setJoinedRooms(data);
+      setActiveRoomId((current) => {
+        if (focusRoomId && data.some((room) => room.id === focusRoomId)) {
+          return focusRoomId;
+        }
+        if (current && data.some((room) => room.id === current)) {
+          return current;
+        }
+        return null;
+      });
     } catch (error) {
       const message = error.response?.data?.message || 'Failed to load rooms';
       toast.error(message);
-      setRooms([]);
+      setJoinedRooms([]);
+      setActiveRoomId(null);
     } finally {
-      setRoomsLoading(false);
+      setJoinedLoading(false);
     }
-  }, [activeRoomId]);
+  }, []);
+
+  const loadDiscoverRooms = useCallback(async (params = defaultDiscoverFilter) => {
+    const { search = '', type = 'all' } = params;
+    try {
+      setDiscoverLoading(true);
+      const data = await fetchDiscoverRooms({
+        search: search.trim() || undefined,
+        type: type === 'all' ? undefined : type
+      });
+      setDiscoverRooms(data);
+    } catch (error) {
+      const message = error.response?.data?.message || 'Failed to load rooms';
+      toast.error(message);
+      setDiscoverRooms([]);
+    } finally {
+      setDiscoverLoading(false);
+    }
+  }, []);
 
   const loadMessages = useCallback(async (roomId) => {
     if (!roomId) return;
@@ -117,6 +166,7 @@ const ChatLayout = () => {
   }, []);
 
   const handleSelectRoom = (roomId) => {
+    setActiveView('home');
     setActiveRoomId(roomId);
   };
 
@@ -131,7 +181,12 @@ const ChatLayout = () => {
     try {
       const newRoom = await createRoom({ ...createRoomForm, name: createRoomForm.name.trim() });
       toast.success('Room created');
-      setRooms((prev) => [...prev, newRoom].sort((a, b) => a.name.localeCompare(b.name)));
+      setJoinedRooms((previous) => {
+        const next = [...previous, newRoom];
+        return next
+          .slice()
+          .sort((a, b) => new Date(b.lastActivity || b.createdAt) - new Date(a.lastActivity || a.createdAt));
+      });
       setActiveRoomId(newRoom.id);
       setIsCreateRoomOpen(false);
       setCreateRoomForm(defaultRoomForm);
@@ -148,7 +203,7 @@ const ChatLayout = () => {
     try {
       const response = await updateRequest(activeRoomId, { userId: requestId, action });
       toast.success(response.message);
-      await loadRooms();
+      await loadJoinedRooms({ focusRoomId: activeRoomId });
       const refreshed = await fetchRequests(activeRoomId);
       setRoomRequests(refreshed.requests || []);
     } catch (error) {
@@ -169,7 +224,7 @@ const ChatLayout = () => {
       const response = await inviteUser(activeRoomId, { username: inviteUsername.trim() });
       toast.success(response.message);
       setInviteUsername('');
-      await loadRooms();
+      await loadJoinedRooms({ focusRoomId: activeRoomId });
     } catch (error) {
       const message = error.response?.data?.message || 'Failed to invite user';
       toast.error(message);
@@ -178,17 +233,114 @@ const ChatLayout = () => {
     }
   };
 
-  useEffect(() => {
-    loadRooms();
-  }, [loadRooms]);
+  const handleMessageSubmit = (event) => {
+    event.preventDefault();
+    if (!socket || !isReady || !activeRoomId) {
+      toast.error('You must join a room before sending messages');
+      return;
+    }
+
+    const formData = new FormData(event.target);
+    const text = formData.get('message');
+    if (!text?.trim()) return;
+
+    socket.emit('chatMessage', { roomId: activeRoomId, text: text.trim() }, (response) => {
+      if (response?.status === 'error') {
+        toast.error(response.message || 'Failed to send message');
+      }
+    });
+
+    event.target.reset();
+  };
+
+  const handleDiscoverSearch = (event) => {
+    event.preventDefault();
+    const nextFilter = {
+      search: discoverSearchInput.trim(),
+      type: discoverTypeInput
+    };
+    setDiscoverFilter(nextFilter);
+  };
+
+  const handleResetDiscover = () => {
+    setDiscoverSearchInput('');
+    setDiscoverTypeInput('all');
+    setDiscoverFilter(defaultDiscoverFilter);
+  };
+
+  const handleDiscoverAction = (room) => {
+    if (!socket || !isReady) {
+      toast.error('Connection is not ready. Please try again in a moment.');
+      return;
+    }
+
+    setJoiningRoomId(room.id);
+    socket.emit('joinRoom', { roomId: room.id }, async (response) => {
+      setJoiningRoomId(null);
+      if (!response || response.status === 'joined') {
+        toast.success('Joined room successfully');
+        await loadJoinedRooms({ focusRoomId: room.id });
+        await loadDiscoverRooms(discoverFilter);
+        setSelectedDiscoverRoom(null);
+        setActiveView('home');
+      } else if (response.status === 'pending') {
+        toast('Join request sent to the room owner.');
+        await loadDiscoverRooms(discoverFilter);
+        await loadJoinedRooms();
+        setSelectedDiscoverRoom(null);
+      } else {
+        toast.error(response.message || 'Unable to join room');
+      }
+    });
+  };
 
   useEffect(() => {
-    if (!socket || !activeRoomId) {
+    loadJoinedRooms();
+  }, [loadJoinedRooms]);
+
+  useEffect(() => {
+    if (activeView !== 'discover') return;
+    loadDiscoverRooms(discoverFilter);
+  }, [activeView, discoverFilter, loadDiscoverRooms]);
+
+  useEffect(() => {
+    if (!socket) {
       return;
     }
 
     const handleIncomingMessage = (payload) => {
-      if (payload.roomId !== activeRoomId) return;
+      setJoinedRooms((previous) => {
+        let updated = false;
+        const next = previous.map((room) => {
+          if (room.id !== payload.roomId) {
+            return room;
+          }
+          updated = true;
+          return {
+            ...room,
+            lastMessage: {
+              id: payload.id,
+              text: payload.text,
+              timestamp: payload.timestamp,
+              sender: payload.username
+            },
+            lastActivity: payload.timestamp
+          };
+        });
+
+        if (!updated) {
+          return previous;
+        }
+
+        return next
+          .slice()
+          .sort((a, b) => new Date(b.lastActivity || b.createdAt) - new Date(a.lastActivity || a.createdAt));
+      });
+
+      if (payload.roomId !== activeRoomId) {
+        return;
+      }
+
       setMessages((previous) => [
         ...previous,
         {
@@ -203,21 +355,26 @@ const ChatLayout = () => {
     };
 
     const handleUserEvent = (payload) => {
-      if (!payload || payload.roomId !== activeRoomId) return;
-      const eventId =
-        typeof crypto !== 'undefined' && crypto.randomUUID
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random()}`;
-      setMessages((previous) => [
-        ...previous,
-        {
-          id: eventId,
-          type: 'event',
-          text: payload.message,
-          timestamp: new Date().toISOString(),
-          roomId: payload.roomId
+      if (!payload) return;
+      setMessages((previous) => {
+        if (payload.roomId !== activeRoomId) {
+          return previous;
         }
-      ]);
+        const eventId =
+          typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random()}`;
+        return [
+          ...previous,
+          {
+            id: eventId,
+            type: 'event',
+            text: payload.message,
+            timestamp: new Date().toISOString(),
+            roomId: payload.roomId
+          }
+        ];
+      });
     };
 
     socket.on('room:message', handleIncomingMessage);
@@ -230,7 +387,7 @@ const ChatLayout = () => {
   }, [socket, activeRoomId]);
 
   useEffect(() => {
-    if (!socket || !activeRoomId || !isReady) return;
+    if (!socket || !activeRoomId || !isReady || activeView !== 'home') return;
 
     setMessages([]);
     setPendingState(false);
@@ -257,15 +414,15 @@ const ChatLayout = () => {
 
       await loadMessages(activeRoomId);
     });
-  }, [socket, isReady, activeRoomId, loadMessages]);
+  }, [socket, isReady, activeRoomId, activeView, loadMessages]);
 
   useEffect(() => {
-    const loadRequests = async () => {
-      if (!activeRoomId || !isOwner) {
-        setRoomRequests([]);
-        return;
-      }
+    if (!activeRoomId || !isOwner || activeView !== 'home' || !activeRoom || activeRoom.type !== 'request') {
+      setRoomRequests([]);
+      return;
+    }
 
+    const loadRequests = async () => {
       try {
         setRequestsLoading(true);
         const data = await fetchRequests(activeRoomId);
@@ -279,87 +436,54 @@ const ChatLayout = () => {
     };
 
     loadRequests();
-  }, [activeRoomId, isOwner]);
+  }, [activeRoomId, isOwner, activeView, activeRoom]);
 
-  const handleMessageSubmit = (event) => {
-    event.preventDefault();
-    if (!socket || !isReady || !activeRoomId) {
-      toast.error('You must join a room before sending messages');
-      return;
+  useEffect(() => {
+    if (!activeRoomId) {
+      setMessages([]);
+      setPendingState(false);
     }
+  }, [activeRoomId]);
 
-    const formData = new FormData(event.target);
-    const text = formData.get('message');
-    if (!text?.trim()) return;
-
-    socket.emit('chatMessage', { roomId: activeRoomId, text: text.trim() }, (response) => {
-      if (response?.status === 'error') {
-        toast.error(response.message || 'Failed to send message');
-      }
-    });
-
-    event.target.reset();
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100">
-      <header className="border-b border-slate-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 transition-colors duration-300 dark:border-slate-900/70 dark:bg-slate-950/70">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">NovaChat</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Connect with your team in real time.</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-sm font-semibold text-slate-900 dark:text-white">{user.username}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {socketStatus === 'connected' ? 'Online' : socketStatus === 'error' ? 'Error' : 'Offline'}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {isDark ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
-            </button>
-            <button
-              type="button"
-              onClick={logout}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              Sign out
-            </button>
-          </div>
+  const renderHomeView = () => (
+    <div className="flex flex-col gap-6 lg:flex-row">
+      <aside className="w-full shrink-0 space-y-4 lg:w-80">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Joined Rooms
+          </h2>
+          <button
+            type="button"
+            onClick={() => setIsCreateRoomOpen(true)}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-brand-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-brand-300 dark:hover:bg-slate-800"
+            title="Create room"
+          >
+            <PlusIcon className="h-5 w-5" />
+          </button>
         </div>
-      </header>
 
-      <main className="mx-auto flex max-w-6xl flex-1 gap-6 px-6 py-6">
-        <aside className="w-72 shrink-0 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Rooms
-            </h2>
-            <button
-              type="button"
-              onClick={() => setIsCreateRoomOpen(true)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-brand-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-brand-300 dark:hover:bg-slate-800"
-              title="Create room"
-            >
-              <PlusIcon className="h-5 w-5" />
-            </button>
-          </div>
+        <div className="space-y-2">
+          <label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Search
+          </label>
+          <input
+            type="text"
+            value={joinedSearch}
+            onChange={(event) => setJoinedSearch(event.target.value)}
+            placeholder="Search your rooms"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
+          />
+        </div>
 
-          <div className="space-y-2 overflow-y-auto rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900/60">
-            {roomsLoading ? (
-              <p className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400">Loading rooms...</p>
-            ) : rooms.length === 0 ? (
-              <p className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400">
-                No rooms yet. Create one to get started.
-              </p>
-            ) : (
-              rooms.map((room) => (
+        <div className="space-y-2 overflow-y-auto rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900/60">
+          {joinedLoading ? (
+            <p className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400">Loading rooms...</p>
+          ) : filteredJoinedRooms.length > 0 ? (
+            filteredJoinedRooms.map((room) => {
+              const preview = room.lastMessage
+                ? `${room.lastMessage.sender ? `${room.lastMessage.sender}: ` : ''}${room.lastMessage.text}`
+                : room.description || 'No messages yet.';
+              return (
                 <button
                   key={room.id}
                   type="button"
@@ -373,15 +497,14 @@ const ChatLayout = () => {
                 >
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold text-slate-900 dark:text-white">{room.name}</p>
-                    <span className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      {room.type}
+                    <span className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {room.lastActivity ? dayjs(room.lastActivity).fromNow() : '—'}
                     </span>
                   </div>
-                  {room.description ? (
-                    <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{room.description}</p>
-                  ) : null}
+                  <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{preview}</p>
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                    <span>{room.memberCount} member{room.memberCount === 1 ? '' : 's'}</span>
+                    <span className="capitalize">{room.type}</span>
+                    <span>• {room.memberCount} member{room.memberCount === 1 ? '' : 's'}</span>
                     <span>• Owner: {room.isOwner ? 'You' : room.owner}</span>
                     {room.pendingCount > 0 && room.isOwner && room.type === 'request' ? (
                       <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
@@ -390,165 +513,352 @@ const ChatLayout = () => {
                     ) : null}
                   </div>
                 </button>
-              ))
-            )}
-          </div>
-        </aside>
+              );
+            })
+          ) : joinedRooms.length === 0 ? (
+            <div className="space-y-3 rounded-xl border border-dashed border-slate-300 bg-slate-50/60 px-4 py-5 text-center dark:border-slate-700 dark:bg-slate-900/40">
+              <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                You haven’t joined any rooms yet.
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Visit the Discover page to browse public and request-only communities.
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveView('discover')}
+                className="rounded-xl bg-brand-500 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+              >
+                Go to Discover
+              </button>
+            </div>
+          ) : (
+            <p className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400">No rooms found for that search.</p>
+          )}
+        </div>
+      </aside>
 
-        <section className="flex-1 space-y-4">
-          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-md transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900">
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  {activeRoom ? activeRoom.name : 'Select a room'}
-                </h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {activeRoom ? activeRoom.description || 'Welcome to your chatroom.' : 'No room selected'}
-                </p>
-              </div>
-              {activeRoom ? (
+      <section className="flex-1 space-y-4">
+        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-md transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900">
+          {activeRoom ? (
+            <>
+              <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{activeRoom.name}</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {activeRoom.description || 'Welcome to your chatroom.'}
+                  </p>
+                </div>
                 <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
                   <span>{activeRoom.memberCount} members</span>
                   <span>• Created {dayjs(activeRoom.createdAt).fromNow()}</span>
                 </div>
-              ) : null}
-            </div>
+              </div>
 
-            <div className="h-[420px] overflow-y-auto px-6 py-6 space-y-3 bg-slate-50/70 transition-colors duration-300 dark:bg-slate-950/40">
-              {messagesLoading ? (
-                <p className="text-sm text-slate-500 dark:text-slate-400">Loading conversation...</p>
-              ) : pendingState ? (
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Waiting for approval. You will be notified once the owner approves your request.
-                </p>
-              ) : messages.length === 0 ? (
-                <p className="text-sm text-slate-500 dark:text-slate-400">No messages yet. Start the conversation!</p>
-              ) : (
-                messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={clsx(
-                      'rounded-2xl border px-4 py-3 shadow-sm transition',
-                      message.type === 'event'
-                        ? 'border-dashed border-slate-300 bg-white/70 text-center text-xs font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400'
-                        : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'
-                    )}
+              <div className="h-[420px] space-y-3 overflow-y-auto bg-slate-50/70 px-6 py-6 transition-colors duration-300 dark:bg-slate-950/40">
+                {messagesLoading ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Loading conversation...</p>
+                ) : pendingState ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    Waiting for approval. You will be notified once the owner approves your request.
+                  </p>
+                ) : messages.length === 0 ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">No messages yet. Start the conversation!</p>
+                ) : (
+                  messages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={clsx(
+                        'rounded-2xl border px-4 py-3 shadow-sm transition',
+                        message.type === 'event'
+                          ? 'border-dashed border-slate-300 bg-white/70 text-center text-xs font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400'
+                          : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'
+                      )}
+                    >
+                      {message.type === 'event' ? (
+                        <p>{message.text}</p>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                            <span className="font-semibold text-slate-900 dark:text-slate-100">{message.username}</span>
+                            <span>{dayjs(message.timestamp).fromNow()}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-slate-900 dark:text-slate-100">{message.text}</p>
+                        </>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="border-t border-slate-200 px-6 py-4 dark:border-slate-800">
+                <form className="flex items-center gap-3" onSubmit={handleMessageSubmit}>
+                  <input
+                    name="message"
+                    type="text"
+                    placeholder={pendingState ? 'Awaiting approval...' : 'Write a message'}
+                    className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
+                    disabled={!activeRoom || messagesLoading || pendingState}
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!activeRoom || messagesLoading || pendingState}
                   >
-                    {message.type === 'event' ? (
-                      <p>{message.text}</p>
-                    ) : (
-                      <>
-                        <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                          <span className="font-semibold text-slate-900 dark:text-slate-100">{message.username}</span>
-                          <span>{dayjs(message.timestamp).fromNow()}</span>
-                        </div>
-                        <p className="mt-2 text-sm text-slate-900 dark:text-slate-100">{message.text}</p>
-                      </>
-                    )}
-                  </div>
-                ))
-              )}
+                    Send
+                  </button>
+                </form>
+              </div>
+            </>
+          ) : (
+            <div className="flex h-[520px] flex-col items-center justify-center gap-3 bg-slate-50/70 px-6 text-center transition-colors duration-300 dark:bg-slate-950/40">
+              <p className="text-base font-medium text-slate-600 dark:text-slate-300">
+                Select a room to start chatting.
+              </p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Choose from your joined rooms on the left or discover new communities to join.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {activeRoom && isOwner ? (
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-md transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Owner tools
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Manage join requests and invite users.</p>
+              </div>
             </div>
 
-            <div className="border-t border-slate-200 px-6 py-4 dark:border-slate-800">
-              <form className="flex items-center gap-3" onSubmit={handleMessageSubmit}>
-                <input
-                  name="message"
-                  type="text"
-                  placeholder={pendingState ? 'Awaiting approval...' : 'Write a message'}
-                  className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
-                  disabled={!activeRoom || messagesLoading || pendingState}
-                />
+            {activeRoom.type === 'request' ? (
+              <div className="mt-6">
+                <h4 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Pending requests</h4>
+                <div className="mt-3 space-y-2">
+                  {requestsLoading ? (
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Loading requests...</p>
+                  ) : roomRequests.length === 0 ? (
+                    <p className="text-sm text-slate-500 dark:text-slate-400">No pending requests right now.</p>
+                  ) : (
+                    roomRequests.map((request) => (
+                      <div
+                        key={request.id}
+                        className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition dark:border-slate-800 dark:bg-slate-900"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{request.username}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">Waiting for your approval</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleRequestAction(request.id, 'deny')}
+                            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                          >
+                            Deny
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRequestAction(request.id, 'approve')}
+                            className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
+                          >
+                            Approve
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-6">
+              <h4 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Invite teammates</h4>
+              <form className="mt-3 flex flex-col gap-3 sm:flex-row" onSubmit={handleInvite}>
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={inviteUsername}
+                    onChange={(event) => setInviteUsername(event.target.value)}
+                    placeholder="Enter username"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
+                  />
+                </div>
                 <button
                   type="submit"
-                  className="rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={!activeRoom || messagesLoading || pendingState}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={inviting}
                 >
-                  Send
+                  <UserPlusIcon className="h-4 w-4" />
+                  {inviting ? 'Inviting...' : 'Send invite'}
                 </button>
               </form>
             </div>
           </div>
+        ) : null}
+      </section>
+    </div>
+  );
 
-          {activeRoom && isOwner ? (
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-md transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900">
+  const renderDiscoverView = () => (
+    <section className="space-y-6">
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-md transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900">
+        <form className="flex flex-col gap-4 md:flex-row" onSubmit={handleDiscoverSearch}>
+          <div className="flex-1">
+            <label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400" htmlFor="discoverSearch">
+              Search rooms
+            </label>
+            <input
+              id="discoverSearch"
+              type="text"
+              value={discoverSearchInput}
+              onChange={(event) => setDiscoverSearchInput(event.target.value)}
+              placeholder="Search by room name"
+              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
+            />
+          </div>
+
+          <div className="md:w-48">
+            <label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400" htmlFor="discoverType">
+              Type
+            </label>
+            <select
+              id="discoverType"
+              value={discoverTypeInput}
+              onChange={(event) => setDiscoverTypeInput(event.target.value)}
+              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+            >
+              <option value="all">All rooms</option>
+              <option value="public">Public</option>
+              <option value="request">Request to Join</option>
+            </select>
+          </div>
+
+          <div className="flex items-end gap-2">
+            <button
+              type="submit"
+              className="rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+            >
+              Search
+            </button>
+            <button
+              type="button"
+              onClick={handleResetDiscover}
+              className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              Reset
+            </button>
+          </div>
+        </form>
+        <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
+          Browse public rooms that you can join instantly or request access to moderated spaces.
+        </p>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {discoverLoading ? (
+          <div className="col-span-full rounded-3xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 shadow-sm dark:border-slate-900 dark:bg-slate-900 dark:text-slate-400">
+            Loading rooms...
+          </div>
+        ) : discoverRooms.length === 0 ? (
+          <div className="col-span-full rounded-3xl border border-dashed border-slate-300 bg-slate-50/60 px-6 py-10 text-center text-sm text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
+            No rooms match your filters yet. Try adjusting the search or type filter.
+          </div>
+        ) : (
+          discoverRooms.map((room) => (
+            <button
+              key={room.id}
+              type="button"
+              onClick={() => setSelectedDiscoverRoom(room)}
+              className="flex h-full flex-col rounded-3xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:-translate-y-1 hover:border-brand-400 hover:shadow-lg dark:border-slate-900 dark:bg-slate-900"
+            >
               <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Owner tools
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Manage join requests and invite users.</p>
-                </div>
+                <p className="text-base font-semibold text-slate-900 dark:text-white">{room.name}</p>
+                <span className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  {room.type}
+                </span>
               </div>
+              <p className="mt-2 line-clamp-3 text-sm text-slate-500 dark:text-slate-400">
+                {room.description || 'No description provided.'}
+              </p>
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                <span>{room.memberCount} member{room.memberCount === 1 ? '' : 's'}</span>
+                <span>• Owner: {room.owner}</span>
+              </div>
+              <div className="mt-4 flex items-center gap-2 text-[11px] font-medium">
+                {room.isMember ? (
+                  <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300">
+                    You’re a member
+                  </span>
+                ) : room.hasPendingRequest ? (
+                  <span className="rounded-full bg-amber-400/20 px-3 py-1 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
+                    Request pending
+                  </span>
+                ) : null}
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+    </section>
+  );
 
-              {activeRoom.type === 'request' ? (
-                <div className="mt-6">
-                  <h4 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Pending requests</h4>
-                  <div className="mt-3 space-y-2">
-                    {requestsLoading ? (
-                      <p className="text-sm text-slate-500 dark:text-slate-400">Loading requests...</p>
-                    ) : roomRequests.length === 0 ? (
-                      <p className="text-sm text-slate-500 dark:text-slate-400">No pending requests right now.</p>
-                    ) : (
-                      roomRequests.map((request) => (
-                        <div
-                          key={request.id}
-                          className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition dark:border-slate-800 dark:bg-slate-900"
-                        >
-                          <div>
-                            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{request.username}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">Waiting for your approval</p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleRequestAction(request.id, 'deny')}
-                              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-                            >
-                              Deny
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRequestAction(request.id, 'approve')}
-                              className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
-                            >
-                              Approve
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              ) : null}
-
-              {activeRoom.type === 'private' ? (
-                <div className="mt-6">
-                  <h4 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Invite a teammate</h4>
-                  <form className="mt-3 flex flex-col gap-3 sm:flex-row" onSubmit={handleInvite}>
-                    <div className="flex-1">
-                      <input
-                        type="text"
-                        value={inviteUsername}
-                        onChange={(event) => setInviteUsername(event.target.value)}
-                        placeholder="Enter username to invite"
-                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={inviting}
-                    >
-                      <UserPlusIcon className="h-4 w-4" />
-                      {inviting ? 'Inviting...' : 'Send Invite'}
-                    </button>
-                  </form>
-                </div>
-              ) : null}
+  return (
+    <div className="min-h-screen bg-slate-100 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100">
+      <header className="border-b border-slate-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 transition-colors duration-300 dark:border-slate-900/70 dark:bg-slate-950/70">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">NovaChat</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Connect with your team in real time.</p>
+          </div>
+          <div className="flex flex-col-reverse items-center gap-4 md:flex-row">
+            <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              {['home', 'discover'].map((viewKey) => (
+                <button
+                  key={viewKey}
+                  type="button"
+                  onClick={() => setActiveView(viewKey)}
+                  className={clsx(
+                    'rounded-xl px-4 py-2 text-sm font-semibold transition',
+                    activeView === viewKey
+                      ? 'bg-brand-500 text-white shadow'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+                  )}
+                >
+                  {viewKey === 'home' ? 'Home' : 'Discover'}
+                </button>
+              ))}
             </div>
-          ) : null}
-        </section>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">{user.username}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {socketStatus === 'connected' ? 'Online' : socketStatus === 'error' ? 'Error' : 'Offline'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              >
+                {isDark ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
+              </button>
+              <button
+                type="button"
+                onClick={logout}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Sign out
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl flex-1 px-6 py-6">
+        {activeView === 'home' ? renderHomeView() : renderDiscoverView()}
       </main>
 
       <Transition show={isCreateRoomOpen} as={Fragment}>
@@ -665,6 +975,127 @@ const ChatLayout = () => {
                     </button>
                   </div>
                 </form>
+              </Dialog.Panel>
+            </Transition.Child>
+          </div>
+        </Dialog>
+      </Transition>
+
+      <Transition show={Boolean(selectedDiscoverRoom)} as={Fragment}>
+        <Dialog className="relative z-50" onClose={() => setSelectedDiscoverRoom(null)}>
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-200"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-150"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur" />
+          </Transition.Child>
+
+          <div className="fixed inset-0 flex items-center justify-center p-4">
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-200"
+              enterFrom="opacity-0 translate-y-3"
+              enterTo="opacity-100 translate-y-0"
+              leave="ease-in duration-150"
+              leaveFrom="opacity-100 translate-y-0"
+              leaveTo="opacity-0 translate-y-3"
+            >
+              <Dialog.Panel className="w-full max-w-xl space-y-6 rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900">
+                {selectedDiscoverRoom ? (
+                  <>
+                    <div className="space-y-1">
+                      <Dialog.Title className="text-xl font-semibold text-slate-900 dark:text-white">
+                        {selectedDiscoverRoom.name}
+                      </Dialog.Title>
+                      <Dialog.Description className="text-sm text-slate-500 dark:text-slate-400">
+                        Hosted by {selectedDiscoverRoom.owner} • {selectedDiscoverRoom.memberCount} member
+                        {selectedDiscoverRoom.memberCount === 1 ? '' : 's'}
+                      </Dialog.Description>
+                    </div>
+
+                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                      {selectedDiscoverRoom.description || 'No description provided for this room yet.'}
+                    </p>
+
+                    {selectedDiscoverRoom.lastMessage ? (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-300">
+                        <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">Last activity</p>
+                        <p className="mt-1 font-medium text-slate-600 dark:text-slate-200">
+                          {selectedDiscoverRoom.lastMessage.sender
+                            ? `${selectedDiscoverRoom.lastMessage.sender}: `
+                            : ''}
+                          {selectedDiscoverRoom.lastMessage.text}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                          {dayjs(selectedDiscoverRoom.lastActivity).fromNow()}
+                        </p>
+                      </div>
+                    ) : null}
+
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                      <span className="rounded-full bg-slate-100 px-3 py-1 capitalize dark:bg-slate-800">
+                        {selectedDiscoverRoom.type}
+                      </span>
+                      {selectedDiscoverRoom.hasPendingRequest ? (
+                        <span className="rounded-full bg-amber-400/20 px-3 py-1 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
+                          Request pending
+                        </span>
+                      ) : null}
+                      {selectedDiscoverRoom.isMember ? (
+                        <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300">
+                          You’re a member
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDiscoverRoom(null)}
+                        className="rounded-xl border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >
+                        Close
+                      </button>
+                      {selectedDiscoverRoom.isMember ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDiscoverRoom(null);
+                            setActiveView('home');
+                            if (joinedRooms.some((room) => room.id === selectedDiscoverRoom.id)) {
+                              handleSelectRoom(selectedDiscoverRoom.id);
+                            } else {
+                              loadJoinedRooms({ focusRoomId: selectedDiscoverRoom.id });
+                            }
+                          }}
+                          className="rounded-xl bg-brand-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                        >
+                          Open chat
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleDiscoverAction(selectedDiscoverRoom)}
+                          className="rounded-xl bg-brand-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={joiningRoomId === selectedDiscoverRoom.id || selectedDiscoverRoom.hasPendingRequest}
+                        >
+                          {joiningRoomId === selectedDiscoverRoom.id
+                            ? 'Processing...'
+                            : selectedDiscoverRoom.type === 'request'
+                              ? selectedDiscoverRoom.hasPendingRequest
+                                ? 'Request pending'
+                                : 'Request to join'
+                              : 'Join room'}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : null}
               </Dialog.Panel>
             </Transition.Child>
           </div>

@@ -6,12 +6,16 @@ const {
   getPendingRequests,
   handleJoinRequest,
   inviteUser,
-  getMessages
+  getMessages,
+  getJoinedRooms,
+  discoverRooms
 } = require('../controllers/roomController');
 
 const router = express.Router();
 
 router.get('/', authMiddleware(false), listRooms);
+router.get('/joined', authMiddleware(), getJoinedRooms);
+router.get('/discover', authMiddleware(false), discoverRooms);
 router.post('/', authMiddleware(), createRoom);
 router.get('/:roomId/messages', authMiddleware(false), getMessages);
 router.get('/:roomId/requests', authMiddleware(), getPendingRequests);
