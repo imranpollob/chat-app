@@ -1,20 +1,20 @@
 {
-  "name": "chat-app-backend",
+  "name": "chat-app",
+  "private": true,
   "version": "1.0.0",
-  "description": "Real-time chat backend server",
-  "main": "server.js",
+  "description": "Realtime chat application (MERN)",
+  "workspaces": [
+    "client",
+    "server"
+  ],
   "scripts": {
-    "start": "nodemon server.js"
-  },
-  "dependencies": {
-    "bcrypt": "^5.1.1",
-    "dotenv": "^16.4.5",
-    "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "mongoose": "^8.3.2",
-    "socket.io": "^4.7.5"
+    "dev": "concurrently \"npm run dev --workspace server\" \"npm run dev --workspace client\"",
+    "dev:server": "npm run dev --workspace server",
+    "dev:client": "npm run dev --workspace client",
+    "build": "npm run build --workspace client",
+    "lint": "npm run lint --workspace client"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "concurrently": "^8.2.2"
   }
 }
