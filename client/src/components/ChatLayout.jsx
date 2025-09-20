@@ -1,6 +1,15 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Dialog, Transition } from '@headlessui/react';
-import { Bars3Icon, MoonIcon, SunIcon, PlusIcon, UserPlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { Dialog, Menu, Transition } from '@headlessui/react';
+import {
+  Bars3Icon,
+  MoonIcon,
+  SunIcon,
+  PlusIcon,
+  UserPlusIcon,
+  XMarkIcon,
+  ChatBubbleLeftRightIcon,
+  ChevronDownIcon
+} from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -94,6 +103,12 @@ const ChatLayout = () => {
   );
   const isOwner = Boolean(activeRoom?.isOwner);
   const activeRoomType = activeRoom?.type || null;
+  const avatarInitial = useMemo(() => user?.username?.[0]?.toUpperCase() || 'U', [user?.username]);
+  const connectionLabel = useMemo(() => {
+    if (socketStatus === 'connected') return 'Online';
+    if (socketStatus === 'error') return 'Error';
+    return 'Offline';
+  }, [socketStatus]);
 
   const filteredJoinedRooms = useMemo(() => {
     if (!joinedSearch.trim()) {
@@ -743,6 +758,26 @@ const ChatLayout = () => {
     );
   };
 
+  const viewSwitcher = (
+    <div className="inline-flex flex-shrink-0 items-center rounded-2xl border border-slate-200 bg-white p-0.5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      {['home', 'discover'].map((viewKey) => (
+        <button
+          key={viewKey}
+          type="button"
+          onClick={() => setActiveView(viewKey)}
+          className={clsx(
+            'rounded-xl px-1.5 py-1 text-xs font-semibold transition sm:px-3 sm:py-2 sm:text-sm',
+            activeView === viewKey
+              ? 'bg-brand-500 text-white shadow'
+              : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+          )}
+        >
+          {viewKey === 'home' ? 'Home' : 'Discover'}
+        </button>
+      ))}
+    </div>
+  );
+
   const renderHomeView = () => (
     <div className="flex flex-col gap-6 lg:flex-row">
       <aside className="hidden lg:flex lg:w-80 lg:flex-col">
@@ -1033,52 +1068,99 @@ const ChatLayout = () => {
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100">
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 transition-colors duration-300 dark:border-slate-900/70 dark:bg-slate-950/70">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-5 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">NovaChat</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Connect with your team in real time.</p>
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveView('home');
+                closeSidebar();
+              }}
+              className="inline-flex items-center gap-2 rounded-2xl border border-transparent px-3 py-1.5 text-base font-semibold text-slate-900 transition hover:border-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:text-white"
+            >
+              <ChatBubbleLeftRightIcon className="h-6 w-6 text-brand-500" />
+              <span>Chatie</span>
+            </button>
           </div>
-          <div className="flex flex-col-reverse items-center gap-4 md:flex-row">
-            <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              {['home', 'discover'].map((viewKey) => (
-                <button
-                  key={viewKey}
-                  type="button"
-                  onClick={() => setActiveView(viewKey)}
-                  className={clsx(
-                    'rounded-xl px-4 py-2 text-sm font-semibold transition',
-                    activeView === viewKey
-                      ? 'bg-brand-500 text-white shadow'
-                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                  )}
-                >
-                  {viewKey === 'home' ? 'Home' : 'Discover'}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <p className="text-sm font-semibold text-slate-900 dark:text-white">{user.username}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {socketStatus === 'connected' ? 'Online' : socketStatus === 'error' ? 'Error' : 'Offline'}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={toggleTheme}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          <div className="flex flex-1 items-center justify-end gap-3 sm:gap-4">
+            <div className="flex-shrink-0">{viewSwitcher}</div>
+            <Menu as="div" className="relative">
+              <Menu.Button className="inline-flex min-w-0 max-w-[140px] items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-500 text-sm font-semibold text-white">
+                  {avatarInitial}
+                </span>
+                <span className="hidden sm:flex min-w-0 flex-1 flex-col truncate">
+                  <span className="truncate text-sm font-semibold text-slate-900 dark:text-white">{user.username}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">{connectionLabel}</span>
+                </span>
+                <ChevronDownIcon className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+              </Menu.Button>
+              <Transition
+                as={Fragment}
+                enter="transition ease-out duration-100"
+                enterFrom="transform opacity-0 scale-95"
+                enterTo="transform opacity-100 scale-100"
+                leave="transition ease-in duration-75"
+                leaveFrom="transform opacity-100 scale-100"
+                leaveTo="transform opacity-0 scale-95"
               >
-                {isDark ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
-              </button>
-              <button
-                type="button"
-                onClick={logout}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-              >
-                Sign out
-              </button>
-            </div>
+                <Menu.Items className="absolute right-0 mt-2 w-[180px] max-w-[180px] origin-top-right rounded-2xl border border-slate-200 bg-white p-2 text-sm shadow-xl focus:outline-none dark:border-slate-800 dark:bg-slate-900 sm:w-[140px] sm:max-w-[140px]">
+                  <div className="px-3 py-2">
+                    <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">{user.username}</p>
+                    <p className="truncate text-xs text-slate-500 dark:text-slate-400">Status: {connectionLabel}</p>
+                  </div>
+                  <div className="px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        toggleTheme();
+                      }}
+                      className={clsx(
+                        'group relative flex h-8 w-16 items-center rounded-full px-2 transition-colors',
+                        isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-amber-400 hover:bg-amber-300'
+                      )}
+                      aria-label="Toggle theme"
+                      aria-pressed={isDark}
+                    >
+                      <SunIcon
+                        className={clsx(
+                          'h-4 w-4 text-white transition-opacity',
+                          isDark ? 'opacity-60' : 'opacity-100'
+                        )}
+                      />
+                      <MoonIcon
+                        className={clsx(
+                          'ml-auto h-4 w-4 text-slate-100 transition-opacity',
+                          isDark ? 'opacity-100' : 'opacity-60'
+                        )}
+                      />
+                      <span
+                        className={clsx(
+                          'pointer-events-none absolute left-1 top-1/2 h-6 w-6 -translate-y-1/2 rounded-full bg-white shadow-lg transition-transform',
+                          isDark ? 'translate-x-7' : 'translate-x-0'
+                        )}
+                      />
+                    </button>
+                  </div>
+                  <Menu.Item>
+                    {({ active }) => (
+                      <button
+                        type="button"
+                        onClick={logout}
+                        className={clsx(
+                          'flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-rose-600 dark:text-rose-400',
+                          active ? 'bg-rose-50 dark:bg-rose-500/10' : ''
+                        )}
+                      >
+                        Sign out
+                      </button>
+                    )}
+                  </Menu.Item>
+                </Menu.Items>
+              </Transition>
+            </Menu>
           </div>
         </div>
       </header>
