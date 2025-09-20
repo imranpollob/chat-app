@@ -80,7 +80,8 @@ const ChatLayout = () => {
   const [discoverLoading, setDiscoverLoading] = useState(false);
   const [discoverSearchInput, setDiscoverSearchInput] = useState('');
   const [discoverTypeInput, setDiscoverTypeInput] = useState('all');
-  const [discoverFilter, setDiscoverFilter] = useState(defaultDiscoverFilter);
+  const [discoverFilter, setDiscoverFilter] = useState(() => ({ ...defaultDiscoverFilter }));
+  const discoverFilterRef = useRef({ ...defaultDiscoverFilter });
   const [selectedDiscoverRoom, setSelectedDiscoverRoom] = useState(null);
   const [joiningRoomId, setJoiningRoomId] = useState(null);
 
@@ -89,6 +90,7 @@ const ChatLayout = () => {
     [joinedRooms, activeRoomId]
   );
   const isOwner = Boolean(activeRoom?.isOwner);
+  const activeRoomType = activeRoom?.type || null;
 
   const filteredJoinedRooms = useMemo(() => {
     if (!joinedSearch.trim()) {
@@ -139,6 +141,10 @@ const ChatLayout = () => {
       setDiscoverLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    discoverFilterRef.current = discoverFilter;
+  }, [discoverFilter]);
 
   const loadMessages = useCallback(async (roomId) => {
     if (!roomId) return;
@@ -280,7 +286,7 @@ const ChatLayout = () => {
   const handleResetDiscover = () => {
     setDiscoverSearchInput('');
     setDiscoverTypeInput('all');
-    setDiscoverFilter(defaultDiscoverFilter);
+    setDiscoverFilter({ ...defaultDiscoverFilter });
   };
 
   const handleDiscoverAction = (room) => {
@@ -295,12 +301,12 @@ const ChatLayout = () => {
       if (!response || response.status === 'joined') {
         toast.success('Joined room successfully');
         await loadJoinedRooms({ focusRoomId: room.id });
-        await loadDiscoverRooms(discoverFilter);
+        await loadDiscoverRooms(discoverFilterRef.current);
         setSelectedDiscoverRoom(null);
         setActiveView('home');
       } else if (response.status === 'pending') {
         toast('Join request sent to the room owner.');
-        await loadDiscoverRooms(discoverFilter);
+        await loadDiscoverRooms(discoverFilterRef.current);
         await loadJoinedRooms();
         setSelectedDiscoverRoom(null);
       } else {
@@ -324,6 +330,7 @@ const ChatLayout = () => {
     }
 
     const handleIncomingMessage = (payload) => {
+      if (!payload) return;
       setJoinedRooms((previous) => {
         let updated = false;
         const next = previous.map((room) => {
@@ -392,14 +399,146 @@ const ChatLayout = () => {
       });
     };
 
+    const handleRequestCreated = (payload) => {
+      if (!payload) return;
+      let ownerOfRoom = false;
+      setJoinedRooms((previous) =>
+        previous.map((room) => {
+          if (room.id !== payload.roomId) {
+            return room;
+          }
+          if (room.isOwner) {
+            ownerOfRoom = true;
+          }
+          return {
+            ...room,
+            pendingCount: payload.pendingCount
+          };
+        })
+      );
+
+      if (!ownerOfRoom) {
+        return;
+      }
+
+      if (payload.request && activeRoomId === payload.roomId && activeRoomType === 'request') {
+        setRoomRequests((previous) => {
+          const exists = previous.some((request) => request.id === payload.request.id);
+          if (exists) {
+            return previous;
+          }
+          return [...previous, payload.request];
+        });
+      }
+
+      if (payload.request?.username) {
+        toast(`${payload.request.username} requested to join ${payload.roomName}`);
+      }
+    };
+
+    const handleRequestResolved = (payload) => {
+      if (!payload) return;
+      let ownerOfRoom = false;
+      setJoinedRooms((previous) =>
+        previous.map((room) => {
+          if (room.id !== payload.roomId) {
+            return room;
+          }
+          if (room.isOwner) {
+            ownerOfRoom = true;
+          }
+          return {
+            ...room,
+            pendingCount: payload.pendingCount,
+            memberCount: payload.memberCount ?? room.memberCount
+          };
+        })
+      );
+
+      if (!ownerOfRoom) {
+        return;
+      }
+
+      if (activeRoomId === payload.roomId && activeRoomType === 'request') {
+        setRoomRequests((previous) =>
+          previous.filter((request) => request.id !== payload.request?.id)
+        );
+      }
+
+      if (payload.performedBy === user?.id) {
+        return;
+      }
+
+      if (payload.request?.username) {
+        const message =
+          payload.action === 'approve'
+            ? `${payload.request.username} was approved for ${payload.roomName}`
+            : `${payload.request.username} was denied for ${payload.roomName}`;
+        if (payload.action === 'approve') {
+          toast.success(message);
+        } else {
+          toast(message);
+        }
+      }
+    };
+
+    const handleMembershipApproved = (payload) => {
+      if (!payload) return;
+      toast.success(`Your request to join ${payload.roomName} was approved.`);
+      loadJoinedRooms({ focusRoomId: payload.roomId });
+      setDiscoverRooms((previous) =>
+        previous.map((room) =>
+          room.id === payload.roomId
+            ? { ...room, isMember: true, hasPendingRequest: false }
+            : room
+        )
+      );
+      setSelectedDiscoverRoom((previous) =>
+        previous && previous.id === payload.roomId
+          ? { ...previous, isMember: true, hasPendingRequest: false }
+          : previous
+      );
+      if (activeView === 'discover') {
+        loadDiscoverRooms(discoverFilterRef.current);
+      }
+    };
+
+    const handleMembershipDenied = (payload) => {
+      if (!payload) return;
+      toast.error(`Your request to join ${payload.roomName} was denied.`);
+      setDiscoverRooms((previous) =>
+        previous.map((room) =>
+          room.id === payload.roomId
+            ? { ...room, hasPendingRequest: false }
+            : room
+        )
+      );
+      setSelectedDiscoverRoom((previous) =>
+        previous && previous.id === payload.roomId
+          ? { ...previous, hasPendingRequest: false }
+          : previous
+      );
+      if (activeView === 'discover') {
+        loadDiscoverRooms(discoverFilterRef.current);
+      }
+    };
+
     socket.on('room:message', handleIncomingMessage);
     socket.on('room:userEvent', handleUserEvent);
+    socket.on('room:requestCreated', handleRequestCreated);
+    socket.on('room:requestResolved', handleRequestResolved);
+    socket.on('room:membershipApproved', handleMembershipApproved);
+    socket.on('room:membershipDenied', handleMembershipDenied);
 
     return () => {
       socket.off('room:message', handleIncomingMessage);
       socket.off('room:userEvent', handleUserEvent);
+      socket.off('room:requestCreated', handleRequestCreated);
+      socket.off('room:requestResolved', handleRequestResolved);
+      socket.off('room:membershipApproved', handleMembershipApproved);
+      socket.off('room:membershipDenied', handleMembershipDenied);
     };
-  }, [socket, activeRoomId]);
+  }, [socket, activeRoomId, activeRoomType, user?.id, loadJoinedRooms, loadDiscoverRooms, activeView]);
 
   useEffect(() => {
     if (!socket || !activeRoomId || !isReady || activeView !== 'home') return;

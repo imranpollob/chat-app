@@ -3,6 +3,7 @@ const Room = require('../models/Room');
 const User = require('../models/User');
 const Message = require('../models/Message');
 const asyncHandler = require('../utils/asyncHandler');
+const { emitToUser } = require('../sockets/socketRegistry');
 
 const normalizeId = (value) => {
   if (!value) return null;
@@ -299,9 +300,47 @@ exports.handleJoinRequest = asyncHandler(async (req, res) => {
 
   await room.save();
 
+  await room.populate('owner', 'username');
+  await room.populate('members', '_id');
+
+  const ownerId = normalizeId(room.owner);
+  const pendingCount = room.pendingRequests.length;
+  const basePayload = {
+    roomId: room._id.toString(),
+    roomName: room.name,
+    pendingCount,
+    memberCount: room.members.length,
+    request: {
+      id: userId,
+      username: targetUser.username
+    },
+    action,
+    performedBy: req.user.id
+  };
+
+  emitToUser(ownerId, 'room:requestResolved', basePayload);
+
+  if (action === 'approve') {
+    const lastMessages = await getLastMessagesForRooms([room._id]);
+    const lastMessage = lastMessages.get(room._id.toString()) || null;
+    emitToUser(userId, 'room:membershipApproved', {
+      roomId: room._id.toString(),
+      roomName: room.name,
+      room: formatRoom(room, userId, {
+        lastMessage,
+        lastActivity: lastMessage?.timestamp || room.updatedAt || room.createdAt
+      })
+    });
+  } else {
+    emitToUser(userId, 'room:membershipDenied', {
+      roomId: room._id.toString(),
+      roomName: room.name
+    });
+  }
+
   res.json({
     message: action === 'approve' ? 'Request approved' : 'Request denied',
-    room: formatRoom(await room.populate('owner', 'username'), req.user.id)
+    room: formatRoom(room, req.user.id)
   });
 });
 

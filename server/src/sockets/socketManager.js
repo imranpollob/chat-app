@@ -2,8 +2,15 @@ const createError = require('http-errors');
 const Room = require('../models/Room');
 const Message = require('../models/Message');
 const { verifyToken } = require('../utils/token');
+const {
+  setIO,
+  trackUserSocket,
+  untrackUserSocket,
+  emitToUser
+} = require('./socketRegistry');
 
 const registerSocket = (io) => {
+  setIO(io);
   io.use((socket, next) => {
     try {
       const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.split(' ')[1];
@@ -20,6 +27,8 @@ const registerSocket = (io) => {
 
   io.on('connection', (socket) => {
     const { username } = socket.user;
+    const userId = socket.user.id;
+    trackUserSocket(userId, socket.id);
     console.log(`Socket connected: ${socket.id} (${username})`);
 
     socket.on('joinRoom', async ({ roomId }, callback) => {
@@ -44,9 +53,23 @@ const registerSocket = (io) => {
 
         if (room.type === 'request' && !isMember) {
           const pendingIds = room.pendingRequests.map((pendingId) => pendingId.toString());
+          let requestAdded = false;
+
           if (!pendingIds.includes(userId)) {
             room.pendingRequests.push(userId);
+            requestAdded = true;
             await room.save();
+
+            emitToUser(room.owner.toString(), 'room:requestCreated', {
+              roomId: room._id.toString(),
+              roomName: room.name,
+              pendingCount: room.pendingRequests.length,
+              request: {
+                id: userId,
+                username
+              },
+              requestedBy: userId
+            });
           }
 
           if (callback) {
@@ -130,6 +153,7 @@ const registerSocket = (io) => {
     });
 
     socket.on('disconnect', () => {
+      untrackUserSocket(userId, socket.id);
       console.log(`Socket disconnected: ${socket.id}`);
     });
   });
