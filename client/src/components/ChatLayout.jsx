@@ -1,24 +1,40 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { PlusIcon, UserPlusIcon } from '@heroicons/react/24/outline';
+import { MoonIcon, SunIcon, PlusIcon, UserPlusIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import clsx from 'clsx';
-import { createRoom, fetchMessages, fetchRequests, fetchRooms, inviteUser, updateRequest } from '../api/rooms';
+import {
+  createRoom,
+  fetchMessages,
+  fetchRequests,
+  fetchRooms,
+  inviteUser,
+  updateRequest
+} from '../api/rooms';
 import useAuth from '../hooks/useAuth';
 import useSocket from '../hooks/useSocket';
+import useTheme from '../hooks/useTheme';
 
 dayjs.extend(relativeTime);
 
 const roomTypes = [
-  { value: 'public', label: 'Public', description: 'Visible to everyone. Anyone can join instantly.' },
+  {
+    value: 'public',
+    label: 'Public',
+    description: 'Visible to everyone. Anyone can join instantly.'
+  },
   {
     value: 'request',
     label: 'Request to Join',
     description: 'Visible to everyone. Owner approval required before joining.'
   },
-  { value: 'private', label: 'Private', description: 'Hidden from discovery. Only invited users can join.' }
+  {
+    value: 'private',
+    label: 'Private',
+    description: 'Hidden from discovery. Only invited users can join.'
+  }
 ];
 
 const defaultRoomForm = {
@@ -30,10 +46,12 @@ const defaultRoomForm = {
 const ChatLayout = () => {
   const { user, logout } = useAuth();
   const { socket, status: socketStatus, isReady } = useSocket();
+  const { isDark, toggleTheme } = useTheme();
 
   const [rooms, setRooms] = useState([]);
   const [roomsLoading, setRoomsLoading] = useState(true);
   const [activeRoomId, setActiveRoomId] = useState(null);
+
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [pendingState, setPendingState] = useState(false);
@@ -48,9 +66,12 @@ const ChatLayout = () => {
   const [inviteUsername, setInviteUsername] = useState('');
   const [inviting, setInviting] = useState(false);
 
-  const activeRoom = useMemo(() => rooms.find((room) => room.id === activeRoomId) || null, [rooms, activeRoomId]);
+  const activeRoom = useMemo(
+    () => rooms.find((room) => room.id === activeRoomId) || null,
+    [rooms, activeRoomId]
+  );
 
-  const isOwner = !!activeRoom?.isOwner;
+  const isOwner = Boolean(activeRoom?.isOwner);
 
   const loadRooms = useCallback(async () => {
     try {
@@ -69,7 +90,7 @@ const ChatLayout = () => {
     }
   }, [activeRoomId]);
 
-  const loadMessages = async (roomId) => {
+  const loadMessages = useCallback(async (roomId) => {
     if (!roomId) return;
     try {
       setMessagesLoading(true);
@@ -80,7 +101,8 @@ const ChatLayout = () => {
           type: 'message',
           text: message.text,
           username: message.username,
-          timestamp: message.timestamp
+          timestamp: message.timestamp,
+          roomId
         }))
       );
       setPendingState(false);
@@ -92,9 +114,9 @@ const ChatLayout = () => {
     } finally {
       setMessagesLoading(false);
     }
-  };
+  }, []);
 
-  const handleSelectRoom = async (roomId) => {
+  const handleSelectRoom = (roomId) => {
     setActiveRoomId(roomId);
   };
 
@@ -174,7 +196,8 @@ const ChatLayout = () => {
           type: 'message',
           text: payload.text,
           username: payload.username,
-          timestamp: payload.timestamp
+          timestamp: payload.timestamp,
+          roomId: payload.roomId
         }
       ]);
     };
@@ -191,7 +214,8 @@ const ChatLayout = () => {
           id: eventId,
           type: 'event',
           text: payload.message,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          roomId: payload.roomId
         }
       ]);
     };
@@ -206,9 +230,7 @@ const ChatLayout = () => {
   }, [socket, activeRoomId]);
 
   useEffect(() => {
-    if (!socket || !activeRoomId) return;
-
-    if (!isReady) return;
+    if (!socket || !activeRoomId || !isReady) return;
 
     setMessages([]);
     setPendingState(false);
@@ -235,7 +257,7 @@ const ChatLayout = () => {
 
       await loadMessages(activeRoomId);
     });
-  }, [socket, isReady, activeRoomId]);
+  }, [socket, isReady, activeRoomId, loadMessages]);
 
   useEffect(() => {
     const loadRequests = async () => {
@@ -259,7 +281,7 @@ const ChatLayout = () => {
     loadRequests();
   }, [activeRoomId, isOwner]);
 
-  const handleMessageSubmit = async (event) => {
+  const handleMessageSubmit = (event) => {
     event.preventDefault();
     if (!socket || !isReady || !activeRoomId) {
       toast.error('You must join a room before sending messages');
@@ -270,7 +292,7 @@ const ChatLayout = () => {
     const text = formData.get('message');
     if (!text?.trim()) return;
 
-    socket.emit('chatMessage', { roomId: activeRoomId, text }, (response) => {
+    socket.emit('chatMessage', { roomId: activeRoomId, text: text.trim() }, (response) => {
       if (response?.status === 'error') {
         toast.error(response.message || 'Failed to send message');
       }
@@ -280,22 +302,32 @@ const ChatLayout = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-slate-900/80 bg-slate-950/60 backdrop-blur supports-[backdrop-filter]:bg-slate-950/30">
+    <div className="min-h-screen bg-slate-100 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100">
+      <header className="border-b border-slate-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 transition-colors duration-300 dark:border-slate-900/70 dark:bg-slate-950/70">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
           <div>
-            <h1 className="text-2xl font-semibold text-white">NovaChat</h1>
-            <p className="text-sm text-slate-400">Connect with your team in real time.</p>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">NovaChat</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Connect with your team in real time.</p>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4">
             <div className="text-right">
-              <p className="text-sm font-semibold text-white">{user.username}</p>
-              <p className="text-xs text-slate-400">{socketStatus === 'connected' ? 'Online' : 'Offline'}</p>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">{user.username}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {socketStatus === 'connected' ? 'Online' : socketStatus === 'error' ? 'Error' : 'Offline'}
+              </p>
             </div>
             <button
               type="button"
+              onClick={toggleTheme}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {isDark ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
+            </button>
+            <button
+              type="button"
               onClick={logout}
-              className="rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               Sign out
             </button>
@@ -306,22 +338,26 @@ const ChatLayout = () => {
       <main className="mx-auto flex max-w-6xl flex-1 gap-6 px-6 py-6">
         <aside className="w-72 shrink-0 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Rooms</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Rooms
+            </h2>
             <button
               type="button"
               onClick={() => setIsCreateRoomOpen(true)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-brand-500/10 text-brand-300 transition hover:bg-brand-500/20"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-brand-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-brand-300 dark:hover:bg-slate-800"
               title="Create room"
             >
               <PlusIcon className="h-5 w-5" />
             </button>
           </div>
 
-          <div className="space-y-2 overflow-y-auto rounded-2xl border border-slate-900/60 bg-slate-900/40 p-2">
+          <div className="space-y-2 overflow-y-auto rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900/60">
             {roomsLoading ? (
-              <p className="text-sm text-slate-400 px-2 py-4">Loading rooms...</p>
+              <p className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400">Loading rooms...</p>
             ) : rooms.length === 0 ? (
-              <p className="text-sm text-slate-400 px-2 py-4">No rooms yet. Create one to get started.</p>
+              <p className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400">
+                No rooms yet. Create one to get started.
+              </p>
             ) : (
               rooms.map((room) => (
                 <button
@@ -329,24 +365,26 @@ const ChatLayout = () => {
                   type="button"
                   onClick={() => handleSelectRoom(room.id)}
                   className={clsx(
-                    'w-full text-left rounded-xl px-4 py-3 transition border border-transparent',
+                    'w-full rounded-xl border px-4 py-3 text-left transition shadow-sm',
                     room.id === activeRoomId
-                      ? 'bg-brand-500/10 border-brand-500/50'
-                      : 'hover:bg-slate-800/60'
+                      ? 'border-brand-400 bg-brand-50 text-slate-900 dark:border-brand-500 dark:bg-brand-500/10 dark:text-slate-100'
+                      : 'border-transparent bg-white hover:border-brand-300 hover:bg-brand-50/70 dark:bg-slate-900/50 dark:hover:border-brand-500/30 dark:hover:bg-slate-900'
                   )}
                 >
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-white">{room.name}</p>
-                    <span className="text-xs uppercase tracking-wide text-slate-400">{room.type}</span>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">{room.name}</p>
+                    <span className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {room.type}
+                    </span>
                   </div>
                   {room.description ? (
-                    <p className="mt-1 line-clamp-2 text-xs text-slate-400">{room.description}</p>
+                    <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{room.description}</p>
                   ) : null}
-                  <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-500">
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
                     <span>{room.memberCount} member{room.memberCount === 1 ? '' : 's'}</span>
                     <span>• Owner: {room.isOwner ? 'You' : room.owner}</span>
                     {room.pendingCount > 0 && room.isOwner && room.type === 'request' ? (
-                      <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">
+                      <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
                         {room.pendingCount} pending
                       </span>
                     ) : null}
@@ -358,45 +396,53 @@ const ChatLayout = () => {
         </aside>
 
         <section className="flex-1 space-y-4">
-          <div className="rounded-3xl border border-slate-900/60 bg-slate-900/50 backdrop-blur">
-            <div className="flex items-center justify-between border-b border-slate-900/50 px-6 py-4">
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-md transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
               <div>
-                <h2 className="text-lg font-semibold text-white">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
                   {activeRoom ? activeRoom.name : 'Select a room'}
                 </h2>
-                <p className="text-sm text-slate-400">
+                <p className="text-sm text-slate-500 dark:text-slate-400">
                   {activeRoom ? activeRoom.description || 'Welcome to your chatroom.' : 'No room selected'}
                 </p>
               </div>
               {activeRoom ? (
-                <div className="flex items-center gap-3 text-xs text-slate-400">
+                <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
                   <span>{activeRoom.memberCount} members</span>
                   <span>• Created {dayjs(activeRoom.createdAt).fromNow()}</span>
                 </div>
               ) : null}
             </div>
 
-            <div className="h-[420px] overflow-y-auto px-6 py-6 space-y-3">
+            <div className="h-[420px] overflow-y-auto px-6 py-6 space-y-3 bg-slate-50/70 transition-colors duration-300 dark:bg-slate-950/40">
               {messagesLoading ? (
-                <p className="text-sm text-slate-400">Loading conversation...</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Loading conversation...</p>
               ) : pendingState ? (
-                <p className="text-sm text-slate-400">
+                <p className="text-sm text-slate-500 dark:text-slate-400">
                   Waiting for approval. You will be notified once the owner approves your request.
                 </p>
               ) : messages.length === 0 ? (
-                <p className="text-sm text-slate-400">No messages yet. Start the conversation!</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">No messages yet. Start the conversation!</p>
               ) : (
                 messages.map((message) => (
-                  <div key={message.id} className="rounded-2xl bg-slate-800/70 px-4 py-3">
+                  <div
+                    key={message.id}
+                    className={clsx(
+                      'rounded-2xl border px-4 py-3 shadow-sm transition',
+                      message.type === 'event'
+                        ? 'border-dashed border-slate-300 bg-white/70 text-center text-xs font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400'
+                        : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'
+                    )}
+                  >
                     {message.type === 'event' ? (
-                      <p className="text-xs text-slate-400 italic text-center">{message.text}</p>
+                      <p>{message.text}</p>
                     ) : (
                       <>
-                        <div className="flex items-center justify-between text-xs text-slate-500">
-                          <span className="font-medium text-slate-200">{message.username}</span>
+                        <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                          <span className="font-semibold text-slate-900 dark:text-slate-100">{message.username}</span>
                           <span>{dayjs(message.timestamp).fromNow()}</span>
                         </div>
-                        <p className="mt-2 text-sm text-slate-100">{message.text}</p>
+                        <p className="mt-2 text-sm text-slate-900 dark:text-slate-100">{message.text}</p>
                       </>
                     )}
                   </div>
@@ -404,18 +450,18 @@ const ChatLayout = () => {
               )}
             </div>
 
-            <div className="border-t border-slate-900/60 px-6 py-4">
+            <div className="border-t border-slate-200 px-6 py-4 dark:border-slate-800">
               <form className="flex items-center gap-3" onSubmit={handleMessageSubmit}>
                 <input
                   name="message"
                   type="text"
                   placeholder={pendingState ? 'Awaiting approval...' : 'Write a message'}
-                  className="flex-1 rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-slate-100 placeholder:text-slate-500 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+                  className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
                   disabled={!activeRoom || messagesLoading || pendingState}
                 />
                 <button
                   type="submit"
-                  className="rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={!activeRoom || messagesLoading || pendingState}
                 >
                   Send
@@ -425,44 +471,46 @@ const ChatLayout = () => {
           </div>
 
           {activeRoom && isOwner ? (
-            <div className="rounded-3xl border border-slate-900/60 bg-slate-900/50 px-6 py-6">
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-md transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Owner Tools</h3>
-                  <p className="text-xs text-slate-500">Manage join requests and invite users.</p>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Owner tools
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Manage join requests and invite users.</p>
                 </div>
               </div>
 
               {activeRoom.type === 'request' ? (
                 <div className="mt-6">
-                  <h4 className="text-xs uppercase tracking-wide text-slate-500">Pending Requests</h4>
+                  <h4 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Pending requests</h4>
                   <div className="mt-3 space-y-2">
                     {requestsLoading ? (
-                      <p className="text-sm text-slate-400">Loading requests...</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Loading requests...</p>
                     ) : roomRequests.length === 0 ? (
-                      <p className="text-sm text-slate-400">No pending requests right now.</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">No pending requests right now.</p>
                     ) : (
                       roomRequests.map((request) => (
                         <div
                           key={request.id}
-                          className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-3"
+                          className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition dark:border-slate-800 dark:bg-slate-900"
                         >
                           <div>
-                            <p className="text-sm font-medium text-slate-200">{request.username}</p>
-                            <p className="text-xs text-slate-500">Waiting for your approval</p>
+                            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{request.username}</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">Waiting for your approval</p>
                           </div>
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
                               onClick={() => handleRequestAction(request.id, 'deny')}
-                              className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:bg-slate-800"
+                              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                             >
                               Deny
                             </button>
                             <button
                               type="button"
                               onClick={() => handleRequestAction(request.id, 'approve')}
-                              className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-400"
+                              className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
                             >
                               Approve
                             </button>
@@ -476,7 +524,7 @@ const ChatLayout = () => {
 
               {activeRoom.type === 'private' ? (
                 <div className="mt-6">
-                  <h4 className="text-xs uppercase tracking-wide text-slate-500">Invite a Teammate</h4>
+                  <h4 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Invite a teammate</h4>
                   <form className="mt-3 flex flex-col gap-3 sm:flex-row" onSubmit={handleInvite}>
                     <div className="flex-1">
                       <input
@@ -484,12 +532,12 @@ const ChatLayout = () => {
                         value={inviteUsername}
                         onChange={(event) => setInviteUsername(event.target.value)}
                         placeholder="Enter username to invite"
-                        className="w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-slate-100 placeholder:text-slate-500 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
                       />
                     </div>
                     <button
                       type="submit"
-                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-400 disabled:opacity-50"
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={inviting}
                     >
                       <UserPlusIcon className="h-4 w-4" />
@@ -514,7 +562,7 @@ const ChatLayout = () => {
             leaveFrom="opacity-100"
             leaveTo="opacity-0"
           >
-            <div className="fixed inset-0 bg-slate-950/70 backdrop-blur" />
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur" />
           </Transition.Child>
 
           <div className="fixed inset-0 flex items-center justify-center p-4">
@@ -527,17 +575,19 @@ const ChatLayout = () => {
               leaveFrom="opacity-100 translate-y-0"
               leaveTo="opacity-0 translate-y-3"
             >
-              <Dialog.Panel className="w-full max-w-lg space-y-6 rounded-3xl border border-slate-800 bg-slate-950/80 p-8">
+              <Dialog.Panel className="w-full max-w-lg space-y-6 rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900">
                 <div className="space-y-1">
-                  <Dialog.Title className="text-xl font-semibold text-white">Create a new room</Dialog.Title>
-                  <Dialog.Description className="text-sm text-slate-400">
+                  <Dialog.Title className="text-xl font-semibold text-slate-900 dark:text-white">
+                    Create a new room
+                  </Dialog.Title>
+                  <Dialog.Description className="text-sm text-slate-500 dark:text-slate-400">
                     Group conversations by topic, team, or project.
                   </Dialog.Description>
                 </div>
 
                 <form className="space-y-5" onSubmit={handleCreateRoom}>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-200" htmlFor="roomName">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="roomName">
                       Room name
                     </label>
                     <input
@@ -548,12 +598,12 @@ const ChatLayout = () => {
                         setCreateRoomForm((prev) => ({ ...prev, name: event.target.value }))
                       }
                       placeholder="e.g. design-lab"
-                      className="w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-slate-100 placeholder:text-slate-500 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-200" htmlFor="roomDescription">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="roomDescription">
                       Description
                     </label>
                     <textarea
@@ -564,21 +614,21 @@ const ChatLayout = () => {
                         setCreateRoomForm((prev) => ({ ...prev, description: event.target.value }))
                       }
                       placeholder="Tell members what this room is about"
-                      className="w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-slate-100 placeholder:text-slate-500 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
                     />
                   </div>
 
                   <div className="space-y-3">
-                    <p className="text-sm font-medium text-slate-200">Privacy</p>
+                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Privacy</p>
                     <div className="grid gap-3 md:grid-cols-3">
                       {roomTypes.map((option) => (
                         <label
                           key={option.value}
                           className={clsx(
-                            'cursor-pointer rounded-2xl border px-4 py-3 transition',
+                            'cursor-pointer rounded-2xl border px-4 py-3 transition shadow-sm',
                             createRoomForm.type === option.value
-                              ? 'border-brand-500 bg-brand-500/10'
-                              : 'border-slate-800 bg-slate-950/40 hover:border-brand-500/40'
+                              ? 'border-brand-400 bg-brand-50 text-slate-900 dark:border-brand-500 dark:bg-brand-500/10 dark:text-slate-100'
+                              : 'border-slate-200 bg-white hover:border-brand-300 hover:bg-brand-50/60 dark:border-slate-700 dark:bg-slate-950 dark:hover:border-brand-500/30 dark:hover:bg-slate-900'
                           )}
                         >
                           <input
@@ -591,8 +641,8 @@ const ChatLayout = () => {
                             }
                             className="hidden"
                           />
-                          <p className="text-sm font-semibold text-white">{option.label}</p>
-                          <p className="mt-1 text-xs text-slate-400">{option.description}</p>
+                          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{option.label}</p>
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{option.description}</p>
                         </label>
                       ))}
                     </div>
@@ -601,14 +651,14 @@ const ChatLayout = () => {
                   <div className="flex items-center justify-end gap-3">
                     <button
                       type="button"
-                      className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800"
+                      className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                       onClick={() => setIsCreateRoomOpen(false)}
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="rounded-xl bg-brand-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-brand-400 disabled:opacity-60"
+                      className="rounded-xl bg-brand-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:opacity-60"
                       disabled={creatingRoom}
                     >
                       {creatingRoom ? 'Creating...' : 'Create room'}

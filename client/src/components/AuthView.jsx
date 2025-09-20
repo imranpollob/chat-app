@@ -43,15 +43,15 @@ const AuthView = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-4 py-12">
-      <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 backdrop-blur-xl rounded-3xl shadow-2xl p-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-100 via-white to-slate-100 px-4 py-12 transition-colors duration-300 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+      <div className="mx-auto w-full max-w-md rounded-3xl border border-slate-200 bg-white/90 p-8 shadow-2xl backdrop-blur transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900/85">
         <div className="text-center space-y-2">
-          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/10 text-brand-300 text-xs tracking-wide uppercase">
-            <span className="w-2 h-2 rounded-full bg-brand-400 animate-pulse" />
-            Realtime Collaboration
+          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/10 text-brand-600 text-xs tracking-wide uppercase dark:bg-brand-500/15 dark:text-brand-200">
+            <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
+            Real-time collaboration
           </span>
-          <h1 className="text-3xl font-semibold text-white">Welcome to NovaChat</h1>
-          <p className="text-sm text-slate-400">
+          <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Welcome to NovaChat</h1>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
             {mode === 'login'
               ? 'Sign in to continue where conversations never sleep.'
               : 'Create an account to start building communities and chatrooms.'}
@@ -60,7 +60,7 @@ const AuthView = () => {
 
         <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-200" htmlFor="username">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="username">
               Username
             </label>
             <input
@@ -69,14 +69,14 @@ const AuthView = () => {
               type="text"
               value={form.username}
               onChange={handleChange}
-              className="w-full rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-slate-100 placeholder:text-slate-500 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/40 transition"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
               placeholder="Choose a unique handle"
               autoComplete="username"
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-200" htmlFor="password">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="password">
               Password
             </label>
             <input
@@ -85,7 +85,7 @@ const AuthView = () => {
               type="password"
               value={form.password}
               onChange={handleChange}
-              className="w-full rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-slate-100 placeholder:text-slate-500 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/40 transition"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
               placeholder="Enter a secure password"
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             />
@@ -94,20 +94,20 @@ const AuthView = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 hover:bg-brand-400 transition px-4 py-3 font-medium text-white disabled:opacity-60 disabled:cursor-not-allowed"
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-4 py-3 font-medium text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? 'Please wait...' : mode === 'login' ? 'Log In' : 'Create Account'}
           </button>
         </form>
 
-        <div className="mt-6 text-center text-sm text-slate-400">
+        <div className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400">
           {mode === 'login' ? (
             <>
               Need an account?{' '}
               <button
                 type="button"
                 onClick={toggleMode}
-                className="font-medium text-brand-300 hover:text-brand-200"
+                className="font-medium text-brand-600 transition hover:text-brand-500 dark:text-brand-300 dark:hover:text-brand-200"
               >
                 Register now
               </button>
@@ -118,7 +118,7 @@ const AuthView = () => {
               <button
                 type="button"
                 onClick={toggleMode}
-                className="font-medium text-brand-300 hover:text-brand-200"
+                className="font-medium text-brand-600 transition hover:text-brand-500 dark:text-brand-300 dark:hover:text-brand-200"
               >
                 Log in
               </button>

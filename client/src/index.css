@@ -3,14 +3,21 @@
 @tailwind utilities;
 
 :root {
+  color-scheme: light;
+}
+
+.dark {
   color-scheme: dark;
 }
 
-body {
-  @apply bg-slate-950 text-slate-100 antialiased;
+html {
+  @apply bg-slate-100 text-slate-900 antialiased transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100;
 }
 
-#__root,
+body {
+  @apply min-h-screen bg-transparent transition-colors duration-300;
+}
+
 #root {
   @apply min-h-screen;
 }
