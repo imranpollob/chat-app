@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat App</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.3/dist/tailwind.min.css" rel="stylesheet" />
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-gFRS5Nh1/Slc07rnTrnOHJT2bgXSbJ9T1Ea8LSw72grlEWXWMXQmVE3Sw9kz1Ii+" crossorigin="anonymous"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+      }
+    </style>
+  </head>
+  <body class="bg-slate-900 text-slate-100">
+    <div id="root"></div>
+    <script type="text/babel">
+      const { useState, useEffect, useRef, useCallback } = React;
+
+      const API_BASE_URL = 'http://localhost:3001';
+
+      const AuthForm = ({ mode, onSubmit, toggleMode, loading, error, successMessage }) => {
+        const [username, setUsername] = useState('');
+        const [password, setPassword] = useState('');
+
+        useEffect(() => {
+          setUsername('');
+          setPassword('');
+        }, [mode]);
+
+        const handleSubmit = (event) => {
+          event.preventDefault();
+          onSubmit({ username: username.trim(), password });
+        };
+
+        return (
+          <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center px-4">
+            <div className="w-full max-w-md bg-slate-800/70 border border-slate-700 rounded-2xl p-8 space-y-6 shadow-lg">
+              <div className="space-y-2 text-center">
+                <h1 className="text-3xl font-semibold">Realtime Chat</h1>
+                <p className="text-slate-400">
+                  {mode === 'login'
+                    ? 'Log in to start chatting with the community.'
+                    : 'Create an account to join the conversation.'}
+                </p>
+              </div>
+
+              <form className="space-y-5" onSubmit={handleSubmit}>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-300" htmlFor="username">
+                    Username
+                  </label>
+                  <input
+                    id="username"
+                    type="text"
+                    className="w-full px-4 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Enter your username"
+                    value={username}
+                    onChange={(event) => setUsername(event.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-300" htmlFor="password">
+                    Password
+                  </label>
+                  <input
+                    id="password"
+                    type="password"
+                    className="w-full px-4 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                </div>
+
+                {error ? (
+                  <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-900 rounded-md px-3 py-2">
+                    {error}
+                  </p>
+                ) : null}
+
+                {successMessage ? (
+                  <p className="text-sm text-emerald-300 bg-emerald-950/40 border border-emerald-900 rounded-md px-3 py-2">
+                    {successMessage}
+                  </p>
+                ) : null}
+
+                <button
+                  type="submit"
+                  className="w-full px-4 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={loading}
+                >
+                  {loading ? 'Please wait...' : mode === 'login' ? 'Log In' : 'Register'}
+                </button>
+              </form>
+
+              <div className="text-center text-sm text-slate-400">
+                {mode === 'login' ? 'Need an account? ' : 'Already have an account? '}
+                <button
+                  className="text-indigo-400 hover:text-indigo-300 font-medium"
+                  onClick={toggleMode}
+                  type="button"
+                >
+                  {mode === 'login' ? 'Register' : 'Log In'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const RoomList = ({
+        rooms,
+        activeRoom,
+        onSelectRoom,
+        onCreateClick,
+        refreshing
+      }) => (
+        <aside className="w-full lg:w-72 xl:w-80 bg-slate-800/60 border border-slate-700 rounded-xl flex flex-col overflow-hidden">
+          <div className="px-4 py-4 border-b border-slate-700 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Rooms</h2>
+              <p className="text-xs text-slate-400">Browse & join available chats.</p>
+            </div>
+            <button
+              className="px-3 py-1 text-xs font-medium rounded-lg bg-indigo-500 hover:bg-indigo-400 transition"
+              onClick={onCreateClick}
+              type="button"
+            >
+              Create
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {refreshing ? (
+              <p className="text-sm text-slate-400 text-center py-6">Loading rooms...</p>
+            ) : rooms.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-6 px-4">
+                No rooms available yet. Create one to start chatting.
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-700/60">
+                {rooms.map((room) => (
+                  <li key={room.name}>
+                    <button
+                      className={`w-full text-left px-4 py-3 transition flex flex-col gap-1 ${
+                        room.name === activeRoom
+                          ? 'bg-indigo-500/20 border-l-4 border-indigo-400'
+                          : 'hover:bg-slate-800'
+                      }`}
+                      onClick={() => onSelectRoom(room.name)}
+                      type="button"
+                    >
+                      <span className="font-medium text-sm text-slate-100 flex items-center justify-between">
+                        <span>{room.name}</span>
+                        <span className="text-[0.625rem] uppercase tracking-wide text-slate-400 bg-slate-900/70 px-2 py-0.5 rounded">
+                          {room.type}
+                        </span>
+                      </span>
+                      {room.description ? (
+                        <span className="text-xs text-slate-400 truncate">{room.description}</span>
+                      ) : null}
+                      <div className="text-[0.65rem] text-slate-500 flex flex-wrap items-center gap-2">
+                        <span>
+                          {room.memberCount ?? 0} member{(room.memberCount ?? 0) === 1 ? '' : 's'}
+                        </span>
+                        <span>| Owner: {room.isOwner ? 'You' : room.owner}</span>
+                        {room.type === 'request' && room.isOwner && (room.pendingCount ?? 0) > 0 ? (
+                          <span className="uppercase tracking-wide text-[0.6rem] text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded">
+                            {room.pendingCount} pending
+                          </span>
+                        ) : null}
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </aside>
+      );
+
+      const ChatWindow = ({ user }) => {
+        const [messages, setMessages] = useState([]);
+        const [currentMessage, setCurrentMessage] = useState('');
+        const [rooms, setRooms] = useState([]);
+        const [activeRoom, setActiveRoom] = useState(null);
+        const [activeRoomInfo, setActiveRoomInfo] = useState(null);
+        const [roomsLoading, setRoomsLoading] = useState(false);
+        const [roomError, setRoomError] = useState(null);
+        const [roomAccessError, setRoomAccessError] = useState(null);
+        const [showCreateRoom, setShowCreateRoom] = useState(false);
+        const [newRoomName, setNewRoomName] = useState('');
+        const [newRoomDescription, setNewRoomDescription] = useState('');
+        const [newRoomType, setNewRoomType] = useState('public');
+        const [creatingRoom, setCreatingRoom] = useState(false);
+        const [createRoomError, setCreateRoomError] = useState(null);
+        const [pendingRequests, setPendingRequests] = useState([]);
+        const [pendingLoading, setPendingLoading] = useState(false);
+        const [pendingError, setPendingError] = useState(null);
+        const [pendingSuccess, setPendingSuccess] = useState(null);
+        const [requestActionLoading, setRequestActionLoading] = useState({});
+        const [inviteUsername, setInviteUsername] = useState('');
+        const [inviting, setInviting] = useState(false);
+        const [inviteError, setInviteError] = useState(null);
+        const [inviteSuccess, setInviteSuccess] = useState(null);
+        const socketRef = useRef(null);
+        const bottomRef = useRef(null);
+
+        useEffect(() => {
+          const socket = io('http://localhost:3001');
+          socketRef.current = socket;
+
+          const handleIncomingMessage = (message) => {
+            const normalizedMessage =
+              typeof message === 'string'
+                ? { text: message, username: 'Anonymous' }
+                : {
+                    text: message?.text ?? '',
+                    username: message?.username ?? 'Anonymous',
+                    roomName: message?.roomName || null,
+                    timestamp: message?.timestamp || null
+                  };
+
+            if (!normalizedMessage.roomName || normalizedMessage.roomName === activeRoom) {
+              setMessages((prevMessages) => [
+                ...prevMessages,
+                {
+                  type: 'chat',
+                  payload: normalizedMessage
+                }
+              ]);
+            }
+          };
+
+          const handleUserEvent = (eventMessage) => {
+            setMessages((prevMessages) => [
+              ...prevMessages,
+              {
+                type: 'event',
+                payload: {
+                  text: eventMessage
+                }
+              }
+            ]);
+          };
+
+          socket.on('chat message', handleIncomingMessage);
+          socket.on('user event', handleUserEvent);
+
+          return () => {
+            socket.off('chat message', handleIncomingMessage);
+          socket.off('user event', handleUserEvent);
+          socket.disconnect();
+        };
+      }, [activeRoom]);
+
+        useEffect(() => {
+          if (!activeRoom) {
+            setActiveRoomInfo(null);
+            return;
+          }
+
+          const roomDetails = rooms.find((room) => room.name === activeRoom);
+          if (roomDetails) {
+            setActiveRoomInfo(roomDetails);
+          }
+        }, [rooms, activeRoom]);
+
+        useEffect(() => {
+          setRoomAccessError(null);
+          setPendingError(null);
+          setPendingSuccess(null);
+          setInviteError(null);
+          setInviteSuccess(null);
+          setInviteUsername('');
+        }, [activeRoom]);
+
+        const fetchRooms = useCallback(async () => {
+          try {
+            setRoomsLoading(true);
+            const params = new URLSearchParams();
+            if (user?.username && user?.password) {
+              params.append('username', user.username);
+              params.append('password', user.password);
+            }
+
+            const query = params.toString();
+            const response = await fetch(
+              `${API_BASE_URL}/api/rooms/public${query ? `?${query}` : ''}`
+            );
+            if (!response.ok) {
+              throw new Error('Failed to load rooms.');
+            }
+
+            const { rooms: availableRooms } = await response.json();
+            const safeRooms = Array.isArray(availableRooms) ? availableRooms : [];
+            setRooms(safeRooms);
+            setRoomError(null);
+
+            if (safeRooms.length > 0) {
+              setActiveRoom((previousRoom) => {
+                if (previousRoom && safeRooms.some((room) => room.name === previousRoom)) {
+                  return previousRoom;
+                }
+                return safeRooms[0].name;
+              });
+            } else {
+              setActiveRoom(null);
+            }
+          } catch (error) {
+            console.error(error);
+            setRoomError(error.message);
+            setRooms([]);
+            setActiveRoom(null);
+          } finally {
+            setRoomsLoading(false);
+          }
+        }, [user?.username, user?.password]);
+
+        useEffect(() => {
+          fetchRooms();
+        }, [fetchRooms]);
+
+        const fetchPendingRequests = useCallback(
+          async (roomId) => {
+            if (!roomId) {
+              return;
+            }
+
+            if (!user?.username || !user?.password) {
+              setPendingError('Missing credentials. Please log in again.');
+              setPendingRequests([]);
+              return;
+            }
+
+            try {
+              setPendingLoading(true);
+              setPendingError(null);
+              setPendingSuccess(null);
+
+              const params = new URLSearchParams();
+              params.append('username', user.username);
+              params.append('password', user.password);
+
+              const response = await fetch(
+                `${API_BASE_URL}/api/rooms/${roomId}/requests?${params.toString()}`
+              );
+              const data = await response.json();
+
+              if (!response.ok) {
+                throw new Error(data.message || 'Failed to load room requests.');
+              }
+
+              setPendingRequests(Array.isArray(data.requests) ? data.requests : []);
+
+              if (data.room) {
+                setRooms((prevRooms) =>
+                  prevRooms.map((room) =>
+                    room.id === data.room.id
+                      ? {
+                          ...room,
+                          pendingCount: data.room.pendingCount
+                        }
+                      : room
+                  )
+                );
+
+                setActiveRoomInfo((previous) => {
+                  if (previous && previous.id === data.room.id) {
+                    return {
+                      ...previous,
+                      pendingCount: data.room.pendingCount
+                    };
+                  }
+                  return previous;
+                });
+              }
+            } catch (error) {
+              console.error(error);
+              setPendingError(error.message);
+              setPendingRequests([]);
+            } finally {
+              setPendingLoading(false);
+            }
+          },
+          [user?.username, user?.password]
+        );
+
+        useEffect(() => {
+          if (activeRoomInfo && activeRoomInfo.isOwner && activeRoomInfo.type === 'request') {
+            fetchPendingRequests(activeRoomInfo.id);
+          } else {
+            setPendingRequests([]);
+            setPendingError(null);
+            setPendingSuccess(null);
+          }
+        }, [activeRoomInfo, fetchPendingRequests]);
+
+        useEffect(() => {
+          if (!activeRoom) {
+            return;
+          }
+
+          const fetchMessages = async () => {
+            try {
+              const params = new URLSearchParams();
+              params.append('roomName', activeRoom);
+              if (user?.username && user?.password) {
+                params.append('username', user.username);
+                params.append('password', user.password);
+              }
+
+              const response = await fetch(`${API_BASE_URL}/api/messages?${params.toString()}`);
+              const data = await response.json();
+
+              if (!response.ok) {
+                throw new Error(data.message || 'Failed to load messages.');
+              }
+
+              setRoomAccessError(null);
+              setMessages(
+                (data.messages || []).map((message) => ({
+                  type: 'chat',
+                  payload: {
+                    username: message.username,
+                    text: message.text,
+                    timestamp: message.timestamp,
+                    roomName: message.roomName
+                  }
+                }))
+              );
+            } catch (error) {
+              console.error(error);
+              setRoomAccessError(error.message);
+            }
+          };
+
+          setMessages([]);
+          setRoomAccessError(null);
+
+          socketRef.current?.emit('join room', {
+            roomName: activeRoom,
+            username: user.username
+          });
+
+          fetchMessages();
+        }, [activeRoom, user?.username, user?.password]);
+
+        useEffect(() => {
+          bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, [messages]);
+
+        const handleSubmit = (event) => {
+          event.preventDefault();
+          if (!currentMessage.trim() || !activeRoom || roomAccessError) return;
+
+          const messagePayload = {
+            username: user.username,
+            text: currentMessage.trim(),
+            roomName: activeRoom
+          };
+
+          socketRef.current?.emit('chat message', messagePayload);
+          setCurrentMessage('');
+        };
+
+        const handleRoomSelect = (roomName) => {
+          if (roomName === activeRoom) return;
+          setMessages([]);
+          setRoomAccessError(null);
+          setPendingRequests([]);
+          setPendingError(null);
+          setPendingSuccess(null);
+          setInviteError(null);
+          setInviteSuccess(null);
+          setInviteUsername('');
+          setActiveRoom(roomName);
+
+          const selectedRoom = rooms.find((room) => room.name === roomName);
+          if (selectedRoom) {
+            setActiveRoomInfo(selectedRoom);
+          }
+        };
+
+        const handleCreateRoom = async (event) => {
+          event.preventDefault();
+          if (!newRoomName.trim()) {
+            setCreateRoomError('Room name is required.');
+            return;
+          }
+
+          setCreatingRoom(true);
+          setCreateRoomError(null);
+
+          if (!user.password) {
+            setCreateRoomError('Missing credentials. Please log in again to create a room.');
+            setCreatingRoom(false);
+            return;
+          }
+
+          try {
+            const response = await fetch(`${API_BASE_URL}/api/rooms`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name: newRoomName.trim(),
+                description: newRoomDescription.trim(),
+                type: newRoomType,
+                username: user.username,
+                password: user.password
+              })
+            });
+
+            const responseBody = await response.json();
+
+            if (!response.ok) {
+              throw new Error(responseBody.message || 'Failed to create room.');
+            }
+
+            setShowCreateRoom(false);
+            setNewRoomName('');
+            setNewRoomDescription('');
+            setNewRoomType('public');
+
+            if (responseBody.room) {
+              const roomSummary = {
+                id: responseBody.room.id,
+                name: responseBody.room.name,
+                description: responseBody.room.description,
+                type: responseBody.room.type,
+                owner: user.username,
+                memberCount: 1,
+                pendingCount: 0,
+                isOwner: true,
+                isMember: true
+              };
+
+              setRooms((prevRooms) => {
+                if (prevRooms.some((room) => room.name === roomSummary.name)) {
+                  return prevRooms;
+                }
+                return [...prevRooms, roomSummary];
+              });
+
+              setActiveRoom(roomSummary.name);
+              setActiveRoomInfo(roomSummary);
+            }
+
+            await fetchRooms();
+          } catch (error) {
+            console.error(error);
+            setCreateRoomError(error.message);
+          } finally {
+            setCreatingRoom(false);
+          }
+        };
+
+        const handleRequestDecision = async (targetUserId, action) => {
+          if (!activeRoomInfo) {
+            return;
+          }
+
+          setRequestActionLoading((prev) => ({ ...prev, [targetUserId]: true }));
+          setPendingError(null);
+          setPendingSuccess(null);
+
+          try {
+            const response = await fetch(`${API_BASE_URL}/api/rooms/${activeRoomInfo.id}/approve`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                username: user.username,
+                password: user.password,
+                targetUserId,
+                action
+              })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+              throw new Error(data.message || 'Failed to update request.');
+            }
+
+            setPendingRequests(Array.isArray(data.pendingRequests) ? data.pendingRequests : []);
+            setPendingSuccess(data.message || 'Request updated.');
+
+            if (data.room) {
+              setRooms((prevRooms) =>
+                prevRooms.map((room) =>
+                  room.id === data.room.id
+                    ? {
+                        ...room,
+                        memberCount: data.room.memberCount,
+                        pendingCount: data.room.pendingCount
+                      }
+                    : room
+                )
+              );
+
+              setActiveRoomInfo((previous) => {
+                if (previous && previous.id === data.room.id) {
+                  return {
+                    ...previous,
+                    memberCount: data.room.memberCount,
+                    pendingCount: data.room.pendingCount
+                  };
+                }
+                return previous;
+              });
+            }
+          } catch (error) {
+            console.error(error);
+            setPendingError(error.message);
+          } finally {
+            setRequestActionLoading((prev) => {
+              const updated = { ...prev };
+              delete updated[targetUserId];
+              return updated;
+            });
+          }
+        };
+
+        const handleInviteSubmit = async (event) => {
+          event.preventDefault();
+          if (!activeRoomInfo) {
+            return;
+          }
+
+          if (!inviteUsername.trim()) {
+            setInviteError('Username is required.');
+            setInviteSuccess(null);
+            return;
+          }
+
+          setInviting(true);
+          setInviteError(null);
+          setInviteSuccess(null);
+
+          try {
+            const response = await fetch(`${API_BASE_URL}/api/rooms/${activeRoomInfo.id}/invite`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                username: user.username,
+                password: user.password,
+                targetUsername: inviteUsername.trim()
+              })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+              throw new Error(data.message || 'Failed to invite user.');
+            }
+
+            setInviteUsername('');
+            setInviteSuccess(data.message || 'User invited successfully.');
+
+            if (data.room) {
+              setRooms((prevRooms) =>
+                prevRooms.map((room) =>
+                  room.id === data.room.id
+                    ? {
+                        ...room,
+                        memberCount: data.room.memberCount
+                      }
+                    : room
+                )
+              );
+
+              setActiveRoomInfo((previous) => {
+                if (previous && previous.id === data.room.id) {
+                  return {
+                    ...previous,
+                    memberCount: data.room.memberCount
+                  };
+                }
+                return previous;
+              });
+            }
+          } catch (error) {
+            console.error(error);
+            setInviteError(error.message);
+          } finally {
+            setInviting(false);
+          }
+        };
+
+        return (
+          <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col">
+            <header className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-semibold">Realtime Chat</h1>
+                <p className="text-sm text-slate-400">Connected as {user.username}</p>
+              </div>
+            </header>
+
+            <main className="flex-1 overflow-hidden px-6 py-4">
+              {roomError ? (
+                <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-900 rounded-md px-4 py-3 mb-4">
+                  {roomError}
+                </p>
+              ) : null}
+
+              <div className="h-full flex flex-col lg:flex-row gap-4">
+                <RoomList
+                  rooms={rooms}
+                  activeRoom={activeRoom}
+                  onSelectRoom={handleRoomSelect}
+                  onCreateClick={() => setShowCreateRoom(true)}
+                  refreshing={roomsLoading}
+                />
+
+                <section className="flex-1 bg-slate-800/60 border border-slate-700 rounded-xl flex flex-col">
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                    {activeRoom ? (
+                      <>
+                        {roomAccessError ? (
+                          <p className="text-sm text-rose-400 text-center mt-10">{roomAccessError}</p>
+                        ) : null}
+                        {messages.length === 0 ? (
+                          roomAccessError ? null : (
+                            <p className="text-sm text-slate-400 text-center mt-10">
+                              No messages in <span className="font-semibold text-slate-200">{activeRoom}</span> yet.
+                            </p>
+                          )
+                        ) : (
+                          messages.map((message, index) => {
+                            if (message.type === 'event') {
+                              return (
+                                <p
+                                  key={`event-${index}`}
+                                  className="text-xs italic text-slate-400 text-center"
+                                >
+                                  {message.payload.text}
+                                </p>
+                              );
+                            }
+
+                            return (
+                              <div
+                                key={`chat-${index}`}
+                                className="px-4 py-2 bg-slate-700 rounded-lg max-w-xl shadow"
+                              >
+                                <p className="text-xs uppercase tracking-wide text-slate-300 mb-1">
+                                  {message.payload.username}
+                                </p>
+                                <p className="text-sm text-slate-100">{message.payload.text}</p>
+                              </div>
+                            );
+                          })
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-sm text-slate-400 text-center mt-10">
+                        Select a room to start chatting.
+                      </p>
+                    )}
+                    <div ref={bottomRef} />
+                  </div>
+
+                  <form className="border-t border-slate-700 p-4 flex gap-3" onSubmit={handleSubmit}>
+                    <input
+                      type="text"
+                      className="flex-1 px-4 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder={activeRoom ? `Message #${activeRoom}` : 'Select a room to chat'}
+                      value={currentMessage}
+                      onChange={(event) => setCurrentMessage(event.target.value)}
+                      disabled={!activeRoom || !!roomAccessError}
+                    />
+                    <button
+                      type="submit"
+                      className="px-5 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={!activeRoom || !!roomAccessError}
+                    >
+                      Send
+                    </button>
+                  </form>
+
+                  {activeRoomInfo &&
+                  activeRoomInfo.isOwner &&
+                  (activeRoomInfo.type === 'request' || activeRoomInfo.type === 'private') ? (
+                    <div className="border-t border-slate-700 p-4 space-y-4 bg-slate-900/40">
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-200">Room Management</h3>
+                        <p className="text-xs text-slate-400">
+                          Manage access controls for {activeRoomInfo.name}.
+                        </p>
+                      </div>
+
+                      {activeRoomInfo.type === 'request' ? (
+                        <div className="space-y-3">
+                          <h4 className="text-xs uppercase tracking-wide text-slate-400">Join Requests</h4>
+                          {pendingError ? (
+                            <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-900 rounded-md px-3 py-2">
+                              {pendingError}
+                            </p>
+                          ) : null}
+                          {pendingSuccess ? (
+                            <p className="text-sm text-emerald-300 bg-emerald-950/40 border border-emerald-900 rounded-md px-3 py-2">
+                              {pendingSuccess}
+                            </p>
+                          ) : null}
+                          {pendingLoading ? (
+                            <p className="text-sm text-slate-400">Loading requests...</p>
+                          ) : pendingRequests.length === 0 ? (
+                            <p className="text-sm text-slate-400">No pending requests.</p>
+                          ) : (
+                            <ul className="space-y-2">
+                              {pendingRequests.map((request) => (
+                                <li
+                                  key={request.id}
+                                  className="flex items-center justify-between bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2"
+                                >
+                                  <span className="text-sm text-slate-200">{request.username}</span>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      className="px-3 py-1 rounded-lg border border-slate-600 text-slate-200 hover:bg-slate-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                      onClick={() => handleRequestDecision(request.id, 'deny')}
+                                      disabled={!!requestActionLoading[request.id]}
+                                    >
+                                      Deny
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                      onClick={() => handleRequestDecision(request.id, 'approve')}
+                                      disabled={!!requestActionLoading[request.id]}
+                                    >
+                                      Approve
+                                    </button>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      ) : null}
+
+                      {activeRoomInfo.type === 'private' ? (
+                        <div className="space-y-3">
+                          <h4 className="text-xs uppercase tracking-wide text-slate-400">Invite User</h4>
+                          <form className="flex flex-col gap-3" onSubmit={handleInviteSubmit}>
+                            <div className="flex flex-col sm:flex-row gap-3">
+                              <input
+                                type="text"
+                                className="flex-1 px-4 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                placeholder="username"
+                                value={inviteUsername}
+                                onChange={(event) => setInviteUsername(event.target.value)}
+                              />
+                              <button
+                                type="submit"
+                                className="px-4 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={inviting}
+                              >
+                                {inviting ? 'Inviting...' : 'Invite'}
+                              </button>
+                            </div>
+                          </form>
+                          {inviteError ? (
+                            <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-900 rounded-md px-3 py-2">
+                              {inviteError}
+                            </p>
+                          ) : null}
+                          {inviteSuccess ? (
+                            <p className="text-sm text-emerald-300 bg-emerald-950/40 border border-emerald-900 rounded-md px-3 py-2">
+                              {inviteSuccess}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </section>
+              </div>
+            </main>
+
+            {showCreateRoom ? (
+              <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center px-4">
+                <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-semibold">Create a Room</h2>
+                      <p className="text-xs text-slate-400">Configure access and details for your new chat.</p>
+                    </div>
+                    <button
+                      className="text-slate-400 hover:text-slate-200"
+                      onClick={() => {
+                        setShowCreateRoom(false);
+                        setCreateRoomError(null);
+                      }}
+                      type="button"
+                    >
+                      X
+                    </button>
+                  </div>
+
+                  <form className="space-y-4" onSubmit={handleCreateRoom}>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-300" htmlFor="room-name">
+                        Room Name
+                      </label>
+                      <input
+                        id="room-name"
+                        type="text"
+                        className="w-full px-4 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="e.g., general"
+                        value={newRoomName}
+                        onChange={(event) => setNewRoomName(event.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-300" htmlFor="room-description">
+                        Description
+                      </label>
+                      <textarea
+                        id="room-description"
+                        className="w-full px-4 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="Optional details about the room"
+                        rows="3"
+                        value={newRoomDescription}
+                        onChange={(event) => setNewRoomDescription(event.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-slate-300">Privacy</label>
+                      <div className="flex items-center gap-3">
+                        {['public', 'request', 'private'].map((type) => (
+                          <label
+                            key={type}
+                            className={`flex items-center gap-2 text-sm capitalize px-3 py-2 rounded-lg border transition ${
+                              newRoomType === type
+                                ? 'border-indigo-400 bg-indigo-500/10 text-indigo-200'
+                                : 'border-slate-700 bg-slate-800/60 text-slate-300'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="room-type"
+                              value={type}
+                              checked={newRoomType === type}
+                              onChange={(event) => setNewRoomType(event.target.value)}
+                              className="accent-indigo-500"
+                            />
+                            {type}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {createRoomError ? (
+                      <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-900 rounded-md px-3 py-2">
+                        {createRoomError}
+                      </p>
+                    ) : null}
+
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        className="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700"
+                        onClick={() => {
+                          setShowCreateRoom(false);
+                          setCreateRoomError(null);
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={creatingRoom}
+                      >
+                        {creatingRoom ? 'Creating...' : 'Create Room'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        );
+      };
+
+      const App = () => {
+        const [mode, setMode] = useState('login');
+        const [user, setUser] = useState(null);
+        const [authError, setAuthError] = useState(null);
+        const [authSuccess, setAuthSuccess] = useState(null);
+        const [loading, setLoading] = useState(false);
+
+        const handleAuthSubmit = async ({ username, password }) => {
+          if (!username || !password) {
+            setAuthError('Username and password are required.');
+            return;
+          }
+
+          setLoading(true);
+          setAuthError(null);
+          setAuthSuccess(null);
+
+          const endpoint = mode === 'login' ? '/api/login' : '/api/register';
+
+          try {
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ username, password })
+            });
+
+            const responseBody = await response.json();
+
+            if (!response.ok) {
+              throw new Error(responseBody.message || 'Something went wrong.');
+            }
+
+            if (mode === 'login') {
+              setUser({ username: responseBody.username || username, password });
+            } else {
+              setAuthSuccess(responseBody.message || 'Registration successful. You can log in now.');
+              setMode('login');
+            }
+          } catch (error) {
+            setAuthError(error.message);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        const toggleMode = () => {
+          setMode((prevMode) => (prevMode === 'login' ? 'register' : 'login'));
+          setAuthError(null);
+          setAuthSuccess(null);
+        };
+
+        if (!user) {
+          return (
+            <AuthForm
+              mode={mode}
+              onSubmit={handleAuthSubmit}
+              toggleMode={toggleMode}
+              loading={loading}
+              error={authError}
+              successMessage={authSuccess}
+            />
+          );
+        }
+
+        return <ChatWindow user={user} />;
+      };
+
+      const rootElement = document.getElementById('root');
+      const root = ReactDOM.createRoot(rootElement);
+      root.render(<App />);
+    </script>
+  </body>
+</html>
