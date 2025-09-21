@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, Menu, Transition } from '@headlessui/react';
-import { Bars3Icon, MoonIcon, SunIcon, PlusIcon, UserPlusIcon, XMarkIcon, ChatBubbleLeftRightIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
+import { Bars3Icon, MoonIcon, SunIcon, PlusIcon, ChatBubbleLeftRightIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -22,10 +22,14 @@ import useTheme from '../hooks/useTheme';
 import DiscoverFilters from './chat/DiscoverFilters';
 import DiscoverGrid from './chat/DiscoverGrid';
 import DiscoverRoomModal from './chat/DiscoverRoomModal';
+import JoinedRoomsSidebar from './chat/JoinedRoomsSidebar';
 import ChatHeader from './chat/ChatHeader';
 import MessageList from './chat/MessageList';
 import MessageComposer from './chat/MessageComposer';
 import CreateRoomModal from './chat/CreateRoomModal';
+import PendingRequestsList from './chat/PendingRequestsList';
+import MemberManagement from './chat/MemberManagement';
+import InviteForm from './chat/InviteForm';
 
 dayjs.extend(relativeTime);
 
@@ -819,125 +823,7 @@ const ChatLayout = () => {
     scrollMessagesToBottom(behavior);
   }, [messages, messagesLoading, scrollMessagesToBottom]);
 
-  const renderJoinedSidebarContent = (variant = 'static') => {
-    const containerClass = clsx('space-y-4', variant === 'drawer' ? 'flex h-full flex-col' : '');
-    const listSectionClass = clsx(variant === 'drawer' ? 'flex-1' : '');
-    const listContainerClass = clsx(
-      variant === 'drawer' ? 'h-full' : '',
-      'space-y-2 overflow-y-auto rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900/60'
-    );
-
-    return (
-      <div className={containerClass}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {variant === 'drawer' ? (
-              <button
-                type="button"
-                onClick={closeSidebar}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                title="Close"
-              >
-                <XMarkIcon className="h-5 w-5" />
-              </button>
-            ) : null}
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Joined Rooms
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setIsCreateRoomOpen(true);
-              if (variant === 'drawer') {
-                closeSidebar();
-              }
-            }}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-brand-300 dark:hover:bg-slate-800"
-          >
-            <PlusIcon className="h-4 w-4" />
-            <span>Create room</span>
-          </button>
-        </div>
-
-        <div>
-          <input
-            type="text"
-            value={joinedSearch}
-            onChange={(event) => setJoinedSearch(event.target.value)}
-            placeholder="Search your rooms"
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
-          />
-        </div>
-
-        <div className={listSectionClass}>
-          <div className={listContainerClass}>
-            {joinedLoading ? (
-              <p className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400">Loading rooms...</p>
-            ) : filteredJoinedRooms.length > 0 ? (
-              filteredJoinedRooms.map((room) => {
-                const preview = room.lastMessage
-                  ? `${room.lastMessage.sender ? `${room.lastMessage.sender}: ` : ''}${room.lastMessage.text}`
-                  : room.description || 'No messages yet.';
-                return (
-                  <button
-                    key={room.id}
-                    type="button"
-                    onClick={() => handleSelectRoom(room.id)}
-                    className={clsx(
-                      'w-full rounded-xl border px-4 py-3 text-left transition shadow-sm',
-                      room.id === activeRoomId
-                        ? 'border-brand-400 bg-brand-50 text-slate-900 dark:border-brand-500 dark:bg-brand-500/10 dark:text-slate-100'
-                        : 'border-transparent bg-white hover:border-brand-300 hover:bg-brand-50/70 dark:bg-slate-900/50 dark:hover:border-brand-500/30 dark:hover:bg-slate-900'
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-semibold text-slate-900 dark:text-white" title={room.name}>
-                        {room.name}
-                      </p>
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{preview}</p>
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                      <span>{room.lastActivity ? dayjs(room.lastActivity).fromNow() : '—'}</span>
-                      <span className="ml-auto font-medium text-slate-600 dark:text-slate-300">
-                        {room.isOwner ? 'Owner' : room.isModerator ? 'Moderator' : ''}
-                      </span>
-                      {room.pendingCount > 0 && room.isOwner && room.type === 'request' ? (
-                        <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
-                          {room.pendingCount} pending
-                        </span>
-                      ) : null}
-                    </div>
-                  </button>
-                );
-              })
-            ) : joinedRooms.length === 0 ? (
-              <div className="space-y-3 rounded-xl border border-dashed border-slate-300 bg-slate-50/60 px-4 py-5 text-center dark:border-slate-700 dark:bg-slate-900/40">
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                  You haven’t joined any rooms yet.
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Visit the Discover page to browse public and request-only communities.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveView('discover');
-                    closeSidebar();
-                  }}
-                  className="rounded-xl bg-brand-500 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
-                >
-                  Go to Discover
-                </button>
-              </div>
-            ) : (
-              <p className="px-2 py-4 text-sm text-slate-500 dark:text-slate-400">No rooms found for that search.</p>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
+  // renderJoinedSidebarContent replaced by JoinedRoomsSidebar component
 
   const viewSwitcher = (
     <div className="inline-flex flex-shrink-0 items-center rounded-2xl border border-slate-200 bg-white p-0.5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -962,7 +848,17 @@ const ChatLayout = () => {
   const renderHomeView = () => (
     <div className="flex flex-col gap-6 lg:flex-row">
       <aside className="hidden lg:flex lg:w-80 lg:flex-col">
-        {renderJoinedSidebarContent()}
+        <JoinedRoomsSidebar
+          joinedRooms={joinedRooms}
+          filteredJoinedRooms={filteredJoinedRooms}
+          joinedLoading={joinedLoading}
+          joinedSearch={joinedSearch}
+          setJoinedSearch={setJoinedSearch}
+          activeRoomId={activeRoomId}
+          onSelectRoom={handleSelectRoom}
+          onCreateRoom={() => setIsCreateRoomOpen(true)}
+          setActiveView={setActiveView}
+        />
       </aside>
 
       <section className="flex-1 space-y-4">
@@ -1019,171 +915,33 @@ const ChatLayout = () => {
             </div>
 
             {activeRoom.type === 'request' ? (
-              <div className="mt-6">
-                <h4 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Pending requests</h4>
-                <div className="mt-3 space-y-2">
-                  {requestsLoading ? (
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Loading requests...</p>
-                  ) : roomRequests.length === 0 ? (
-                    <p className="text-sm text-slate-500 dark:text-slate-400">No pending requests right now.</p>
-                  ) : (
-                    roomRequests.map((request) => (
-                      <div
-                        key={request.id}
-                        className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition dark:border-slate-800 dark:bg-slate-900"
-                      >
-                        <div>
-                          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{request.username}</p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">Waiting for your approval</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleRequestAction(request.id, 'deny')}
-                            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-                          >
-                            Deny
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRequestAction(request.id, 'approve')}
-                            className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
-                          >
-                            Approve
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
+              <PendingRequestsList
+                requests={roomRequests}
+                loading={requestsLoading}
+                onAction={handleRequestAction}
+              />
             ) : null}
 
-            {canManageMembers ? (
-              <div className="mt-6">
-                <h4 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Members</h4>
-                {membersLoading ? (
-                  <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Loading members...</p>
-                ) : roomMembers.length === 0 ? (
-                  <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">No members found.</p>
-                ) : (
-                  <div className="mt-3 space-y-2">
-                    {roomMembers.map((member) => {
-                      const isSelf = member.id === user.id;
-                      const isTargetOwner = member.role === 'owner';
-                      const isTargetModerator = member.role === 'moderator';
-                      const canRemove =
-                        !isSelf &&
-                        !isTargetOwner &&
-                        ((canPromoteMembers && (member.role === 'member' || isTargetModerator)) ||
-                          (currentRoomRole === 'moderator' && member.role === 'member'));
-                      const canBan = canRemove;
-                      const canPromote = canPromoteMembers && member.role === 'member';
-                      const canDemote = canPromoteMembers && member.role === 'moderator';
+            <MemberManagement
+              members={roomMembers}
+              banned={bannedUsers}
+              loading={membersLoading}
+              canManageMembers={canManageMembers}
+              canPromoteMembers={canPromoteMembers}
+              currentUserId={user.id}
+              currentRole={currentRoomRole}
+              onAction={handleMemberAction}
+            />
 
-                      return (
-                        <div
-                          key={member.id}
-                          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm transition dark:border-slate-800 dark:bg-slate-900"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate font-medium text-slate-900 dark:text-slate-100">{member.username}</p>
-                            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                              {member.role === 'owner' ? 'Moderator' : member.role}
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            {canPromote ? (
-                              <button
-                                type="button"
-                                onClick={() => handleMemberAction(member.id, 'promote')}
-                                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-                              >
-                                Promote
-                              </button>
-                            ) : null}
-                            {canDemote ? (
-                              <button
-                                type="button"
-                                onClick={() => handleMemberAction(member.id, 'demote')}
-                                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-                              >
-                                Demote
-                              </button>
-                            ) : null}
-                            {canRemove ? (
-                              <button
-                                type="button"
-                                onClick={() => handleMemberAction(member.id, 'remove')}
-                                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-amber-600 transition hover:bg-amber-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 dark:border-slate-700 dark:text-amber-300 dark:hover:bg-slate-800/70"
-                              >
-                                Remove
-                              </button>
-                            ) : null}
-                            {canBan ? (
-                              <button
-                                type="button"
-                                onClick={() => handleMemberAction(member.id, 'ban')}
-                                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-400 dark:border-slate-700 dark:text-rose-400 dark:hover:bg-rose-500/20"
-                              >
-                                Ban
-                              </button>
-                            ) : null}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            ) : null}
-
-            {canManageMembers && bannedUsers.length > 0 ? (
-              <div className="mt-6">
-                <h4 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Banned</h4>
-                <div className="mt-3 space-y-2">
-                  {bannedUsers.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm transition dark:border-slate-800 dark:bg-slate-900"
-                    >
-                      <span className="text-slate-700 dark:text-slate-200">{entry.username}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleMemberAction(entry.id, 'unban')}
-                        className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 dark:border-slate-700 dark:text-emerald-300 dark:hover:bg-emerald-500/20"
-                      >
-                        Unban
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+            {/* Banned users section moved into MemberManagement */}
 
             {isOwner ? (
-              <div className="mt-6">
-                <h4 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Invite teammates</h4>
-                <form className="mt-3 flex flex-col gap-3 sm:flex-row" onSubmit={handleInvite}>
-                  <div className="relative flex-1">
-                    <input
-                      type="text"
-                      value={inviteUsername}
-                      onChange={(event) => setInviteUsername(event.target.value)}
-                      placeholder="Enter username"
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={inviting}
-                  >
-                    <UserPlusIcon className="h-4 w-4" />
-                    {inviting ? 'Inviting...' : 'Send invite'}
-                  </button>
-                </form>
-              </div>
+              <InviteForm
+                username={inviteUsername}
+                setUsername={setInviteUsername}
+                inviting={inviting}
+                onSubmit={handleInvite}
+              />
             ) : null}
           </div>
         ) : null}
@@ -1335,7 +1093,19 @@ const ChatLayout = () => {
               leaveTo="-translate-x-full opacity-0"
             >
               <Dialog.Panel className="flex h-full w-full max-w-xs flex-col bg-white p-6 shadow-2xl transition-colors duration-300 dark:bg-slate-950">
-                {renderJoinedSidebarContent('drawer')}
+                <JoinedRoomsSidebar
+                  variant="drawer"
+                  joinedRooms={joinedRooms}
+                  filteredJoinedRooms={filteredJoinedRooms}
+                  joinedLoading={joinedLoading}
+                  joinedSearch={joinedSearch}
+                  setJoinedSearch={setJoinedSearch}
+                  activeRoomId={activeRoomId}
+                  onSelectRoom={handleSelectRoom}
+                  onCreateRoom={() => setIsCreateRoomOpen(true)}
+                  onCloseDrawer={closeSidebar}
+                  setActiveView={setActiveView}
+                />
               </Dialog.Panel>
             </Transition.Child>
           </div>
