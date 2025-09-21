@@ -196,8 +196,6 @@ const ChatLayout = () => {
         type: type === 'all' ? undefined : type
       });
       setDiscoverRooms(data);
-      toast.dismiss();
-      toast.success(`Found ${data.length} room${data.length === 1 ? '' : 's'}`);
     } catch (error) {
       const message = error.response?.data?.message || 'Failed to load rooms';
       toast.error(message);
@@ -748,8 +746,8 @@ const ChatLayout = () => {
   );
 
   const renderHomeView = () => (
-    <div className="flex flex-col gap-6 lg:flex-row">
-      <aside className="hidden lg:flex lg:w-80 lg:flex-col">
+    <div className="flex flex-col gap-6 sm:flex-row">
+      <aside className="hidden sm:flex sm:w-80 sm:flex-col">
         <JoinedRoomsSidebar
           joinedRooms={joinedRooms}
           filteredJoinedRooms={filteredJoinedRooms}
@@ -764,7 +762,7 @@ const ChatLayout = () => {
       </aside>
 
       <section className="flex-1 space-y-4">
-        <div className="flex items-center justify-between gap-2 lg:hidden">
+        <div className="flex items-center justify-between gap-2 sm:hidden">
           <button
             type="button"
             onClick={openSidebar}
@@ -897,7 +895,7 @@ const ChatLayout = () => {
           <div className="flex flex-1 items-center justify-end gap-3 sm:gap-4">
             <div className="flex-shrink-0">{viewSwitcher}</div>
             <Menu as="div" className="relative">
-              <Menu.Button className="inline-flex min-w-0 max-w-[140px] items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800">
+              <Menu.Button className="inline-flex min-w-0 max-w-[180px] items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800">
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-500 text-sm font-semibold text-white">
                   {avatarInitial}
                 </span>
