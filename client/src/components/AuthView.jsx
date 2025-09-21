@@ -1,7 +1,11 @@
 import { useState } from 'react';
+import React, { useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { login, register } from '../api/auth';
 import useAuth from '../hooks/useAuth';
+import {
+  ChatBubbleLeftRightIcon
+} from '@heroicons/react/24/outline';
 
 const initialForm = { username: '', password: '' };
 
@@ -42,14 +46,55 @@ const AuthView = () => {
     }
   };
 
+  // Inject keyframes for animated gradient
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.innerHTML = `
+      @keyframes gradientMove {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+    `;
+    document.head.appendChild(style);
+    return () => { document.head.removeChild(style); };
+  }, []);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 via-white to-slate-100 px-4 py-12 transition-colors duration-300 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
-      <div className="mx-auto w-full max-w-md rounded-3xl border border-slate-200 bg-white/90 p-8 shadow-2xl backdrop-blur transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900/85">
+    <div className="min-h-screen relative px-4 py-12 flex items-center justify-center overflow-hidden">
+      {/* Animated color gradient background */}
+      <div
+        className="absolute inset-0 -z-10"
+        style={{
+          background: 'linear-gradient(120deg, #38bdf8, #6366f1, #0ea5e9, #f472b6, #a21caf)',
+          backgroundSize: '400% 400%',
+          animation: 'gradientMove 16s ease-in-out infinite',
+          opacity: 0.85,
+          filter: 'blur(8px)',
+        }}
+      />
+      {/* Glowing grid overlay */}
+      <div className="absolute inset-0 -z-10 pointer-events-none">
+        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full opacity-20">
+          <defs>
+            <linearGradient id="gridGradient" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#38bdf8" />
+              <stop offset="100%" stopColor="#6366f1" />
+            </linearGradient>
+          </defs>
+          {Array.from({ length: 10 }).map((_, i) => (
+            <line key={i} x1={i * 10} y1="0" x2={i * 10} y2="100" stroke="url(#gridGradient)" strokeWidth="0.3" />
+          ))}
+          {Array.from({ length: 10 }).map((_, i) => (
+            <line key={i + 10} x1="0" y1={i * 10} x2="100" y2={i * 10} stroke="url(#gridGradient)" strokeWidth="0.3" />
+          ))}
+        </svg>
+      </div>
+      <div className="mx-auto w-full max-w-md border border-slate-200 bg-white/90 p-8 shadow-2xl backdrop-blur transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900/85 relative">
         <div className="text-center space-y-2">
-          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/10 text-brand-600 text-xs tracking-wide uppercase dark:bg-brand-500/15 dark:text-brand-200">
-            <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
-            Real-time collaboration
-          </span>
+          <div className="flex items-center justify-center">
+            <ChatBubbleLeftRightIcon className="h-16 w-16 text-brand-500" />
+          </div>
           <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Welcome to Chatie</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
             {mode === 'login'
