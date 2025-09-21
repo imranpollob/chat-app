@@ -1101,14 +1101,9 @@ const ChatLayout = () => {
         {activeRoom && (isOwner || isModerator) ? (
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-md transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900">
             <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  {isOwner ? 'Owner tools' : 'Moderator tools'}
-                </h3>
-                <p className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                  Your role: {currentRoomRole}
-                </p>
-              </div>
+              <p className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                Your role: {currentRoomRole}
+              </p>
             </div>
 
             {activeRoom.type === 'request' ? (

@@ -50,7 +50,7 @@ const AuthView = () => {
             <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
             Real-time collaboration
           </span>
-          <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Welcome to NovaChat</h1>
+          <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Welcome to Chatie</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
             {mode === 'login'
               ? 'Sign in to continue where conversations never sleep.'

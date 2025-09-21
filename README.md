@@ -1,6 +1,6 @@
-# NovaChat
+# Chatie
 
-NovaChat is a modern, real-time chat application built with the MERN stack. Users can create and moderate rooms with granular privacy controls, collaborate in real time through Socket.IO, and manage membership through an intuitive, responsive UI.
+Chatie is a modern, real-time chat application built with the MERN stack. Users can create and moderate rooms with granular privacy controls, collaborate in real time through Socket.IO, and manage membership through an intuitive, responsive UI.
 
 ## Repository Structure
 
@@ -51,20 +51,20 @@ chat-app/
 
 ### Server (`server/.env`)
 
-| Variable | Description | Default |
-| -------- | ----------- | ------- |
-| `PORT` | Express + Socket.IO port | `3001` |
-| `MONGO_URI` | MongoDB connection string | _required_ |
-| `JWT_SECRET` | Secret used to sign access tokens | _required_ |
-| `BCRYPT_SALT_ROUNDS` | Salt rounds for password hashing | `10` |
-| `CLIENT_ORIGIN` | Allowed origin for CORS & Socket.IO | `http://localhost:5173` |
+| Variable             | Description                         | Default                 |
+| -------------------- | ----------------------------------- | ----------------------- |
+| `PORT`               | Express + Socket.IO port            | `3001`                  |
+| `MONGO_URI`          | MongoDB connection string           | _required_              |
+| `JWT_SECRET`         | Secret used to sign access tokens   | _required_              |
+| `BCRYPT_SALT_ROUNDS` | Salt rounds for password hashing    | `10`                    |
+| `CLIENT_ORIGIN`      | Allowed origin for CORS & Socket.IO | `http://localhost:5173` |
 
 ### Client (`client/.env`)
 
-| Variable | Description | Default |
-| -------- | ----------- | ------- |
-| `VITE_API_URL` | REST API base URL | `http://localhost:3001/api` |
-| `VITE_SOCKET_URL` | Socket.IO server URL | `http://localhost:3001` |
+| Variable          | Description          | Default                     |
+| ----------------- | -------------------- | --------------------------- |
+| `VITE_API_URL`    | REST API base URL    | `http://localhost:3001/api` |
+| `VITE_SOCKET_URL` | Socket.IO server URL | `http://localhost:3001`     |
 
 ## Setting Up MongoDB Locally (macOS / Homebrew)
 
