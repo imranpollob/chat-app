@@ -856,17 +856,14 @@ const ChatLayout = () => {
                 closeSidebar();
               }
             }}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-brand-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-brand-300 dark:hover:bg-slate-800"
-            title="Create room"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-brand-300 dark:hover:bg-slate-800"
           >
-            <PlusIcon className="h-5 w-5" />
+            <PlusIcon className="h-4 w-4" />
+            <span>Create room</span>
           </button>
         </div>
 
-        <div className="space-y-2">
-          <label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Search
-          </label>
+        <div>
           <input
             type="text"
             value={joinedSearch}
@@ -901,22 +898,18 @@ const ChatLayout = () => {
                       <p className="truncate text-sm font-semibold text-slate-900 dark:text-white" title={room.name}>
                         {room.name}
                       </p>
-                      <span className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        {room.lastActivity ? dayjs(room.lastActivity).fromNow() : '—'}
-                      </span>
                     </div>
                     <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{preview}</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                    <span className="capitalize">{room.type}</span>
-                    <span>• {room.memberCount} member{room.memberCount === 1 ? '' : 's'}</span>
-                    <span>
-                      • Role: {room.isOwner ? 'Owner' : room.isModerator ? 'Moderator' : 'Member'}
-                    </span>
-                    {room.pendingCount > 0 && room.isOwner && room.type === 'request' ? (
-                      <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
-                        {room.pendingCount} pending
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                      <span>{room.lastActivity ? dayjs(room.lastActivity).fromNow() : '—'}</span>
+                      <span className="ml-auto font-medium text-slate-600 dark:text-slate-300">
+                        {room.isOwner ? 'Owner' : room.isModerator ? 'Moderator' : ''}
                       </span>
-                    ) : null}
+                      {room.pendingCount > 0 && room.isOwner && room.type === 'request' ? (
+                        <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
+                          {room.pendingCount} pending
+                        </span>
+                      ) : null}
                     </div>
                   </button>
                 );
@@ -976,7 +969,7 @@ const ChatLayout = () => {
       </aside>
 
       <section className="flex-1 space-y-4">
-        <div className="flex items-center justify-between lg:hidden">
+        <div className="flex items-center justify-between gap-2 lg:hidden">
           <button
             type="button"
             onClick={openSidebar}
@@ -985,47 +978,53 @@ const ChatLayout = () => {
             <Bars3Icon className="h-5 w-5" />
             Rooms
           </button>
+          <button
+            type="button"
+            onClick={() => setIsCreateRoomOpen(true)}
+            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-brand-300 dark:hover:bg-slate-800"
+          >
+            <PlusIcon className="h-4 w-4" />
+            Create room
+          </button>
         </div>
 
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-md transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900">
           {activeRoom ? (
             <>
-              <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-6 py-4 dark:border-slate-800">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 truncate">
-                    <h2 className="truncate text-lg font-semibold text-slate-900 dark:text-white">
-                      {activeRoom.name}
-                    </h2>
-                    <span
-                      className={clsx(
-                        'inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border text-xs font-semibold uppercase transition',
-                        activeRoom.type === 'public'
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-200'
-                          : activeRoom.type === 'request'
-                            ? 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/40 dark:bg-amber-500/20 dark:text-amber-200'
-                            : 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-500/40 dark:bg-blue-500/20 dark:text-blue-200'
-                      )}
-                      title={
-                        activeRoom.type === 'public'
-                          ? 'Public room'
-                          : activeRoom.type === 'request'
-                            ? 'Request-to-join room'
-                            : 'Private room'
-                      }
-                    >
-                      {activeRoom.type === 'public' ? (
-                        <GlobeAltIcon className="h-4 w-4" />
-                      ) : activeRoom.type === 'request' ? (
-                        <UserGroupIcon className="h-4 w-4" />
-                      ) : (
-                        <LockClosedIcon className="h-4 w-4" />
-                      )}
-                    </span>
-                  </div>
+              <div className="flex flex-wrap items-start gap-3 border-b border-slate-200 px-6 py-4 dark:border-slate-800 sm:items-center sm:gap-4">
+                <div className="order-1 flex min-w-0 flex-1 items-center gap-2 truncate">
+                  <h2 className="truncate text-lg font-semibold text-slate-900 dark:text-white">
+                    {activeRoom.name}
+                  </h2>
+                  <span
+                    className={clsx(
+                      'inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border text-xs font-semibold uppercase transition',
+                      activeRoom.type === 'public'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-200'
+                        : activeRoom.type === 'request'
+                          ? 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/40 dark:bg-amber-500/20 dark:text-amber-200'
+                          : 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-500/40 dark:bg-blue-500/20 dark:text-blue-200'
+                    )}
+                    title={
+                      activeRoom.type === 'public'
+                        ? 'Public room'
+                        : activeRoom.type === 'request'
+                          ? 'Request-to-join room'
+                          : 'Private room'
+                    }
+                  >
+                    {activeRoom.type === 'public' ? (
+                      <GlobeAltIcon className="h-4 w-4" />
+                    ) : activeRoom.type === 'request' ? (
+                      <UserGroupIcon className="h-4 w-4" />
+                    ) : (
+                      <LockClosedIcon className="h-4 w-4" />
+                    )}
+                  </span>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                <div className="order-2 flex w-full flex-shrink-0 items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400 sm:w-auto sm:justify-end">
                   <span>{activeRoom.memberCount} members</span>
-                  <span>• Created {dayjs(activeRoom.createdAt).fromNow()}</span>
+                  <span>{dayjs(activeRoom.createdAt).fromNow()}</span>
                 </div>
               </div>
 
@@ -1106,9 +1105,6 @@ const ChatLayout = () => {
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   {isOwner ? 'Owner tools' : 'Moderator tools'}
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Manage members, requests, and room access.
-                </p>
                 <p className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
                   Your role: {currentRoomRole}
                 </p>
@@ -1183,11 +1179,11 @@ const ChatLayout = () => {
                           key={member.id}
                           className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm transition dark:border-slate-800 dark:bg-slate-900"
                         >
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-slate-900 dark:text-slate-100">{member.username}</p>
-                        <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          {member.role === 'owner' ? 'Moderator' : member.role}
-                        </p>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-slate-900 dark:text-slate-100">{member.username}</p>
+                            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                              {member.role === 'owner' ? 'Moderator' : member.role}
+                            </p>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
                             {canPromote ? (
@@ -1291,53 +1287,63 @@ const ChatLayout = () => {
   const renderDiscoverView = () => (
     <section className="space-y-6">
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-md transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900">
-        <form className="flex flex-col gap-4 md:flex-row" onSubmit={handleDiscoverSearch}>
-          <div className="flex-1">
-            <label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400" htmlFor="discoverSearch">
-              Search rooms
-            </label>
-            <input
-              id="discoverSearch"
-              type="text"
-              value={discoverSearchInput}
-              onChange={(event) => setDiscoverSearchInput(event.target.value)}
-              placeholder="Search by room name"
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
-            />
-          </div>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <form className="flex w-full flex-col gap-4 md:flex-row md:items-end" onSubmit={handleDiscoverSearch}>
+            <div className="flex-1">
+              <label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400" htmlFor="discoverSearch">
+                Search rooms
+              </label>
+              <input
+                id="discoverSearch"
+                type="text"
+                value={discoverSearchInput}
+                onChange={(event) => setDiscoverSearchInput(event.target.value)}
+                placeholder="Search by room name"
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
+              />
+            </div>
 
-          <div className="md:w-48">
-            <label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400" htmlFor="discoverType">
-              Type
-            </label>
-            <select
-              id="discoverType"
-              value={discoverTypeInput}
-              onChange={(event) => setDiscoverTypeInput(event.target.value)}
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
-            >
-              <option value="all">All rooms</option>
-              <option value="public">Public</option>
-              <option value="request">Request to Join</option>
-            </select>
-          </div>
+            <div className="md:w-48">
+              <label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400" htmlFor="discoverType">
+                Type
+              </label>
+              <select
+                id="discoverType"
+                value={discoverTypeInput}
+                onChange={(event) => setDiscoverTypeInput(event.target.value)}
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+              >
+                <option value="all">All rooms</option>
+                <option value="public">Public</option>
+                <option value="request">Request to Join</option>
+              </select>
+            </div>
 
-          <div className="flex items-end gap-2">
-            <button
-              type="submit"
-              className="rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
-            >
-              Search
-            </button>
-            <button
-              type="button"
-              onClick={handleResetDiscover}
-              className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              Reset
-            </button>
-          </div>
-        </form>
+            <div className="flex items-end gap-2">
+              <button
+                type="submit"
+                className="rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+              >
+                Search
+              </button>
+              <button
+                type="button"
+                onClick={handleResetDiscover}
+                className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsCreateRoomOpen(true)}
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-brand-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-brand-300 dark:hover:bg-slate-800"
+              >
+                <PlusIcon className="h-4 w-4" />
+                Create room
+              </button>
+            </div>
+          </form>
+        </div>
         <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
           Browse public rooms that you can join instantly or request access to moderated spaces.
         </p>
@@ -1360,10 +1366,34 @@ const ChatLayout = () => {
               onClick={() => setSelectedDiscoverRoom(room)}
               className="flex h-full flex-col rounded-3xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:-translate-y-1 hover:border-brand-400 hover:shadow-lg dark:border-slate-900 dark:bg-slate-900"
             >
-              <div className="flex items-center justify-between">
-                <p className="text-base font-semibold text-slate-900 dark:text-white">{room.name}</p>
-                <span className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  {room.type}
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate text-base font-semibold text-slate-900 dark:text-white" title={room.name}>
+                  {room.name}
+                </p>
+                <span
+                  className={clsx(
+                    'inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border text-xs uppercase transition',
+                    room.type === 'public'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-200'
+                      : room.type === 'request'
+                        ? 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/40 dark:bg-amber-500/20 dark:text-amber-200'
+                        : 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-500/40 dark:bg-blue-500/20 dark:text-blue-200'
+                  )}
+                  title={
+                    room.type === 'public'
+                      ? 'Public room'
+                      : room.type === 'request'
+                        ? 'Request-to-join room'
+                        : 'Private room'
+                  }
+                >
+                  {room.type === 'public' ? (
+                    <GlobeAltIcon className="h-4 w-4" />
+                  ) : room.type === 'request' ? (
+                    <UserGroupIcon className="h-4 w-4" />
+                  ) : (
+                    <LockClosedIcon className="h-4 w-4" />
+                  )}
                 </span>
               </div>
               <p className="mt-2 line-clamp-3 text-sm text-slate-500 dark:text-slate-400">
@@ -1371,18 +1401,17 @@ const ChatLayout = () => {
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
                 <span>{room.memberCount} member{room.memberCount === 1 ? '' : 's'}</span>
-                <span>• Owner: {room.owner}</span>
-              </div>
-              <div className="mt-4 flex items-center gap-2 text-[11px] font-medium">
-                {room.isMember ? (
-                  <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300">
-                    You’re a member
-                  </span>
-                ) : room.hasPendingRequest ? (
-                  <span className="rounded-full bg-amber-400/20 px-3 py-1 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
-                    Request pending
-                  </span>
-                ) : null}
+                <span className="ml-auto font-medium text-slate-600 dark:text-slate-300">
+                  {room.isMember ? (
+                    <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300">
+                      {room.isOwner ? 'Owner' : room.isModerator ? 'Moderator' : room.isMember ? 'Member' : ''}
+                    </span>
+                  ) : room.hasPendingRequest ? (
+                    <span className="rounded-full bg-amber-400/20 px-3 py-1 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
+                      Request pending
+                    </span>
+                  ) : null}
+                </span>
               </div>
             </button>
           ))

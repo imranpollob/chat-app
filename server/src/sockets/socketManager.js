@@ -65,7 +65,7 @@ const registerSocket = (io) => {
             requestAdded = true;
             await room.save();
 
-            emitToUser(room.owner.toString(), 'room:requestCreated', {
+            const notificationPayload = {
               roomId: room._id.toString(),
               roomName: room.name,
               pendingCount: room.pendingRequests.length,
@@ -74,7 +74,20 @@ const registerSocket = (io) => {
                 username
               },
               requestedBy: userId
-            });
+            };
+
+            const ownerId = room.owner.toString();
+            emitToUser(ownerId, 'room:requestCreated', notificationPayload);
+
+            const moderatorIds = Array.isArray(room.moderators)
+              ? room.moderators.map((moderatorId) => moderatorId.toString())
+              : [];
+
+            moderatorIds
+              .filter((moderatorId) => moderatorId !== ownerId)
+              .forEach((moderatorId) => {
+                emitToUser(moderatorId, 'room:requestCreated', notificationPayload);
+              });
           }
 
           if (callback) {
