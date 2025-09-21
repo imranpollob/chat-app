@@ -692,3 +692,58 @@ exports.getMessages = asyncHandler(async (req, res) => {
 
 exports.getRoomByName = async (name) => Room.findOne({ name });
 exports.getRoomById = async (id) => Room.findById(id);
+
+// Allow a non-owner member (or moderator) to leave the room themselves
+exports.leaveRoom = asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
+  const { roomId } = req.params;
+
+  if (!userId) {
+    throw createError(401, 'Authentication required');
+  }
+
+  const room = await Room.findById(roomId);
+  if (!room) {
+    throw createError(404, 'Room not found');
+  }
+
+  const ownerId = normalizeId(room.owner);
+  if (ownerId === userId.toString()) {
+    throw createError(400, 'Room owners cannot leave their own room');
+  }
+
+  const memberIds = getMemberIds(room);
+  const moderatorIds = getModeratorIds(room);
+  const isMember = memberIds.includes(userId.toString()) || moderatorIds.includes(userId.toString());
+
+  if (!isMember) {
+    throw createError(400, 'You are not a member of this room');
+  }
+
+  room.members = room.members.filter((m) => normalizeId(m) !== userId.toString());
+  room.moderators = room.moderators.filter((m) => normalizeId(m) !== userId.toString());
+  await room.save();
+
+  const updatedCounts = {
+    memberCount: room.members.length,
+    moderatorCount: room.moderators.length,
+    bannedCount: room.banned.length
+  };
+
+  emitToRoom(room._id, 'room:memberAction', {
+    roomId: room._id.toString(),
+    action: 'leave',
+    user: { id: userId, username: req.user.username },
+    actor: { id: userId, username: req.user.username },
+    ...updatedCounts,
+    role: 'guest'
+  });
+
+  emitToUser(userId, 'room:membershipUpdate', {
+    roomId: room._id.toString(),
+    roomName: room.name,
+    action: 'leave'
+  });
+
+  res.json({ message: 'Left room successfully' });
+});

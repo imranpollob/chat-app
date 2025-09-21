@@ -2,7 +2,7 @@ import dayjs from 'dayjs';
 import clsx from 'clsx';
 import { GlobeAltIcon, UserGroupIcon, LockClosedIcon } from '@heroicons/react/24/outline';
 
-const ChatHeader = ({ room }) => {
+const ChatHeader = ({ room, canLeave = false, onLeave, leaving = false }) => {
   if (!room) return null;
   const created = room.createdAt ? dayjs(room.createdAt) : null;
   const createdLabel = created && created.isValid() ? created.fromNow() : '—';
@@ -36,9 +36,21 @@ const ChatHeader = ({ room }) => {
           )}
         </span>
       </div>
-      <div className="order-2 flex w-full flex-shrink-0 items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400 sm:w-auto sm:justify-end">
-        <span>{room.memberCount} members</span>
-        <span>{createdLabel}</span>
+      <div className="order-2 flex w-full flex-shrink-0 items-center justify-between gap-3 sm:w-auto sm:justify-end">
+        <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+          <span>{room.memberCount} members</span>
+          <span>{createdLabel}</span>
+        </div>
+        {canLeave ? (
+          <button
+            type="button"
+            onClick={onLeave}
+            disabled={leaving}
+            className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 shadow-sm transition hover:bg-rose-50 disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-rose-400 dark:hover:bg-rose-500/10"
+          >
+            {leaving ? 'Leaving…' : 'Leave room'}
+          </button>
+        ) : null}
       </div>
     </div>
   );

@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import clsx from 'clsx';
-import { createRoom, fetchRequests, fetchJoinedRooms, fetchDiscoverRooms, inviteUser, updateRequest } from '../api/rooms';
+import { createRoom, fetchRequests, fetchJoinedRooms, fetchDiscoverRooms, inviteUser, updateRequest, leaveRoom as apiLeaveRoom } from '../api/rooms';
 import useAuth from '../hooks/useAuth';
 import useSocket from '../hooks/useSocket';
 import useTheme from '../hooks/useTheme';
@@ -105,6 +105,7 @@ const ChatLayout = () => {
 
   const [inviteUsername, setInviteUsername] = useState('');
   const [inviting, setInviting] = useState(false);
+  const [leavingRoomId, setLeavingRoomId] = useState(null);
 
   const {
     roomMembers,
@@ -228,6 +229,29 @@ const ChatLayout = () => {
     }
     closeSidebar();
   };
+
+  const handleLeaveCurrentRoom = useCallback(async () => {
+    if (!activeRoom || !activeRoomId) return;
+    if (activeRoom.isOwner) {
+      toast.error('Owners cannot leave their own room.');
+      return;
+    }
+    try {
+      setLeavingRoomId(activeRoomId);
+      await apiLeaveRoom(activeRoomId);
+      if (socket) {
+        socket.emit('leaveRoom', { roomId: activeRoomId });
+      }
+      toast.success(`Left ${activeRoom.name}`);
+      await loadJoinedRooms();
+      setActiveRoomId(null);
+    } catch (error) {
+      const message = error.response?.data?.message || 'Failed to leave room';
+      toast.error(message);
+    } finally {
+      setLeavingRoomId(null);
+    }
+  }, [activeRoom, activeRoomId, loadJoinedRooms, socket]);
 
   const handleCreateRoom = async (event) => {
     event.preventDefault();
@@ -590,6 +614,8 @@ const ChatLayout = () => {
           toast.error(`${payload.user?.username || 'A member'} was banned.`);
         } else if (payload.action === 'remove') {
           toast(`${payload.user?.username || 'A member'} was removed from the room.`);
+        } else if (payload.action === 'leave') {
+          toast(`${payload.user?.username || 'A member'} left the room.`);
         } else if (payload.action === 'promote') {
           toast.success(`${payload.user?.username || 'A member'} is now a moderator.`);
         } else if (payload.action === 'demote') {
@@ -618,10 +644,10 @@ const ChatLayout = () => {
         toast.success(`You have been unbanned from ${roomName}.`);
       }
 
-      loadJoinedRooms({ focusRoomId: action === 'ban' || action === 'remove' ? undefined : roomId });
+      loadJoinedRooms({ focusRoomId: action === 'ban' || action === 'remove' || action === 'leave' ? undefined : roomId });
 
       if (roomId === activeRoomId) {
-        if (action === 'ban' || action === 'remove') {
+        if (action === 'ban' || action === 'remove' || action === 'leave') {
           if (socket) {
             socket.emit('leaveRoom', { roomId });
           }
@@ -769,6 +795,9 @@ const ChatLayout = () => {
                     memberCount: 0,
                     createdAt: null,
                   }}
+                  canLeave={Boolean(activeRoom && !activeRoom.isOwner && activeRoom.isMember)}
+                  leaving={leavingRoomId === activeRoomId}
+                  onLeave={handleLeaveCurrentRoom}
                 />
                 <MessageList messagesRef={messagesContainerRef} messages={messages} loading={messagesLoading} pending={pendingState} />
                 <MessageComposer
