@@ -1,18 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, Menu, Transition } from '@headlessui/react';
-import {
-  Bars3Icon,
-  MoonIcon,
-  SunIcon,
-  PlusIcon,
-  UserPlusIcon,
-  XMarkIcon,
-  ChatBubbleLeftRightIcon,
-  ChevronDownIcon,
-  GlobeAltIcon,
-  UserGroupIcon,
-  LockClosedIcon
-} from '@heroicons/react/24/outline';
+import { Bars3Icon, MoonIcon, SunIcon, PlusIcon, UserPlusIcon, XMarkIcon, ChatBubbleLeftRightIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -31,6 +19,13 @@ import {
 import useAuth from '../hooks/useAuth';
 import useSocket from '../hooks/useSocket';
 import useTheme from '../hooks/useTheme';
+import DiscoverFilters from './chat/DiscoverFilters';
+import DiscoverGrid from './chat/DiscoverGrid';
+import DiscoverRoomModal from './chat/DiscoverRoomModal';
+import ChatHeader from './chat/ChatHeader';
+import MessageList from './chat/MessageList';
+import MessageComposer from './chat/MessageComposer';
+import CreateRoomModal from './chat/CreateRoomModal';
 
 dayjs.extend(relativeTime);
 
@@ -169,6 +164,8 @@ const ChatLayout = () => {
         type: type === 'all' ? undefined : type
       });
       setDiscoverRooms(data);
+      toast.dismiss();
+      toast.success(`Found ${data.length} room${data.length === 1 ? '' : 's'}`);
     } catch (error) {
       const message = error.response?.data?.message || 'Failed to load rooms';
       toast.error(message);
@@ -991,100 +988,15 @@ const ChatLayout = () => {
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-md transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900">
           {activeRoom ? (
             <>
-              <div className="flex flex-wrap items-start gap-3 border-b border-slate-200 px-6 py-4 dark:border-slate-800 sm:items-center sm:gap-4">
-                <div className="order-1 flex min-w-0 flex-1 items-center gap-2 truncate">
-                  <h2 className="truncate text-lg font-semibold text-slate-900 dark:text-white">
-                    {activeRoom.name}
-                  </h2>
-                  <span
-                    className={clsx(
-                      'inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border text-xs font-semibold uppercase transition',
-                      activeRoom.type === 'public'
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-200'
-                        : activeRoom.type === 'request'
-                          ? 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/40 dark:bg-amber-500/20 dark:text-amber-200'
-                          : 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-500/40 dark:bg-blue-500/20 dark:text-blue-200'
-                    )}
-                    title={
-                      activeRoom.type === 'public'
-                        ? 'Public room'
-                        : activeRoom.type === 'request'
-                          ? 'Request-to-join room'
-                          : 'Private room'
-                    }
-                  >
-                    {activeRoom.type === 'public' ? (
-                      <GlobeAltIcon className="h-4 w-4" />
-                    ) : activeRoom.type === 'request' ? (
-                      <UserGroupIcon className="h-4 w-4" />
-                    ) : (
-                      <LockClosedIcon className="h-4 w-4" />
-                    )}
-                  </span>
-                </div>
-                <div className="order-2 flex w-full flex-shrink-0 items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400 sm:w-auto sm:justify-end">
-                  <span>{activeRoom.memberCount} members</span>
-                  <span>{dayjs(activeRoom.createdAt).fromNow()}</span>
-                </div>
-              </div>
+              <ChatHeader room={activeRoom} />
 
-              <div
-                ref={messagesContainerRef}
-                className="h-[420px] space-y-3 overflow-y-auto bg-slate-50/70 px-6 py-6 transition-colors duration-300 dark:bg-slate-950/40"
-              >
-                {messagesLoading ? (
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Loading conversation...</p>
-                ) : pendingState ? (
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Waiting for approval. You will be notified once the owner approves your request.
-                  </p>
-                ) : messages.length === 0 ? (
-                  <p className="text-sm text-slate-500 dark:text-slate-400">No messages yet. Start the conversation!</p>
-                ) : (
-                  messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={clsx(
-                        'rounded-2xl border px-4 py-3 shadow-sm transition',
-                        message.type === 'event'
-                          ? 'border-dashed border-slate-300 bg-white/70 text-center text-xs font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400'
-                          : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'
-                      )}
-                    >
-                      {message.type === 'event' ? (
-                        <p>{message.text}</p>
-                      ) : (
-                        <>
-                          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                            <span className="font-semibold text-slate-900 dark:text-slate-100">{message.username}</span>
-                            <span>{dayjs(message.timestamp).fromNow()}</span>
-                          </div>
-                          <p className="mt-2 text-sm text-slate-900 dark:text-slate-100">{message.text}</p>
-                        </>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
+              <MessageList messagesRef={messagesContainerRef} messages={messages} loading={messagesLoading} pending={pendingState} />
 
-              <div className="border-t border-slate-200 px-6 py-4 dark:border-slate-800">
-                <form className="flex items-center gap-3" onSubmit={handleMessageSubmit}>
-                  <input
-                    name="message"
-                    type="text"
-                    placeholder={pendingState ? 'Awaiting approval...' : 'Write a message'}
-                    className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
-                    disabled={!activeRoom || messagesLoading || pendingState}
-                  />
-                  <button
-                    type="submit"
-                    className="rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!activeRoom || messagesLoading || pendingState}
-                  >
-                    Send
-                  </button>
-                </form>
-              </div>
+              <MessageComposer
+                disabled={!activeRoom || messagesLoading || pendingState}
+                pendingPlaceholder={pendingState ? 'Awaiting approval...' : 'Write a message'}
+                onSubmit={handleMessageSubmit}
+              />
             </>
           ) : (
             <div className="flex h-[520px] flex-col items-center justify-center gap-3 bg-slate-50/70 px-6 text-center transition-colors duration-300 dark:bg-slate-950/40">
@@ -1281,137 +1193,16 @@ const ChatLayout = () => {
 
   const renderDiscoverView = () => (
     <section className="space-y-6">
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-md transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <form className="flex w-full flex-col gap-4 md:flex-row md:items-end" onSubmit={handleDiscoverSearch}>
-            <div className="flex-1">
-              <label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400" htmlFor="discoverSearch">
-                Search rooms
-              </label>
-              <input
-                id="discoverSearch"
-                type="text"
-                value={discoverSearchInput}
-                onChange={(event) => setDiscoverSearchInput(event.target.value)}
-                placeholder="Search by room name"
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
-              />
-            </div>
-
-            <div className="md:w-48">
-              <label className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400" htmlFor="discoverType">
-                Type
-              </label>
-              <select
-                id="discoverType"
-                value={discoverTypeInput}
-                onChange={(event) => setDiscoverTypeInput(event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
-              >
-                <option value="all">All rooms</option>
-                <option value="public">Public</option>
-                <option value="request">Request to Join</option>
-              </select>
-            </div>
-
-            <div className="flex items-end gap-2">
-              <button
-                type="submit"
-                className="rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
-              >
-                Search
-              </button>
-              <button
-                type="button"
-                onClick={handleResetDiscover}
-                className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-              >
-                Reset
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsCreateRoomOpen(true)}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-brand-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-brand-300 dark:hover:bg-slate-800"
-              >
-                <PlusIcon className="h-4 w-4" />
-                Create room
-              </button>
-            </div>
-          </form>
-        </div>
-        <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
-          Browse public rooms that you can join instantly or request access to moderated spaces.
-        </p>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {discoverLoading ? (
-          <div className="col-span-full rounded-3xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 shadow-sm dark:border-slate-900 dark:bg-slate-900 dark:text-slate-400">
-            Loading rooms...
-          </div>
-        ) : discoverRooms.length === 0 ? (
-          <div className="col-span-full rounded-3xl border border-dashed border-slate-300 bg-slate-50/60 px-6 py-10 text-center text-sm text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-            No rooms match your filters yet. Try adjusting the search or type filter.
-          </div>
-        ) : (
-          discoverRooms.map((room) => (
-            <button
-              key={room.id}
-              type="button"
-              onClick={() => setSelectedDiscoverRoom(room)}
-              className="flex h-full flex-col rounded-3xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:-translate-y-1 hover:border-brand-400 hover:shadow-lg dark:border-slate-900 dark:bg-slate-900"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-base font-semibold text-slate-900 dark:text-white" title={room.name}>
-                  {room.name}
-                </p>
-                <span
-                  className={clsx(
-                    'inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border text-xs uppercase transition',
-                    room.type === 'public'
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-200'
-                      : room.type === 'request'
-                        ? 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/40 dark:bg-amber-500/20 dark:text-amber-200'
-                        : 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-500/40 dark:bg-blue-500/20 dark:text-blue-200'
-                  )}
-                  title={
-                    room.type === 'public'
-                      ? 'Public room'
-                      : room.type === 'request'
-                        ? 'Request-to-join room'
-                        : 'Private room'
-                  }
-                >
-                  {room.type === 'public' ? (
-                    <GlobeAltIcon className="h-4 w-4" />
-                  ) : room.type === 'request' ? (
-                    <UserGroupIcon className="h-4 w-4" />
-                  ) : (
-                    <LockClosedIcon className="h-4 w-4" />
-                  )}
-                </span>
-              </div>
-              <p className="mt-2 line-clamp-3 text-sm text-slate-500 dark:text-slate-400">
-                {room.description || 'No description provided.'}
-              </p>
-              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-                <span>{room.memberCount} member{room.memberCount === 1 ? '' : 's'}</span>
-                <span className="ml-auto font-medium text-slate-600 dark:text-slate-300">
-                  {room.isMember ? (
-                    <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300">
-                      {room.isOwner ? 'Owner' : room.isModerator ? 'Moderator' : room.isMember ? 'Member' : ''}
-                    </span>
-                  ) : room.hasPendingRequest ? (
-                    <span className="rounded-full bg-amber-400/20 px-3 py-1 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
-                      Request pending
-                    </span>
-                  ) : null}
-                </span>
-              </div>
-            </button>
-          ))
-        )}
-      </div>
+      <DiscoverFilters
+        searchValue={discoverSearchInput}
+        onSearchChange={setDiscoverSearchInput}
+        typeValue={discoverTypeInput}
+        onTypeChange={setDiscoverTypeInput}
+        onSubmit={handleDiscoverSearch}
+        onReset={handleResetDiscover}
+        onCreateRoom={() => setIsCreateRoomOpen(true)}
+      />
+      <DiscoverGrid loading={discoverLoading} rooms={discoverRooms} onSelect={setSelectedDiscoverRoom} />
     </section>
   );
 
@@ -1551,246 +1342,34 @@ const ChatLayout = () => {
         </Dialog>
       </Transition>
 
-      <Transition show={isCreateRoomOpen} as={Fragment}>
-        <Dialog className="relative z-50" onClose={() => setIsCreateRoomOpen(false)}>
-          <Transition.Child
-            as={Fragment}
-            enter="ease-out duration-200"
-            enterFrom="opacity-0"
-            enterTo="opacity-100"
-            leave="ease-in duration-150"
-            leaveFrom="opacity-100"
-            leaveTo="opacity-0"
-          >
-            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur" />
-          </Transition.Child>
+      <CreateRoomModal
+        open={isCreateRoomOpen}
+        onClose={() => setIsCreateRoomOpen(false)}
+        roomTypes={roomTypes}
+        form={createRoomForm}
+        setForm={setCreateRoomForm}
+        creating={creatingRoom}
+        onSubmit={handleCreateRoom}
+      />
 
-          <div className="fixed inset-0 flex items-center justify-center p-4">
-            <Transition.Child
-              as={Fragment}
-              enter="ease-out duration-200"
-              enterFrom="opacity-0 translate-y-3"
-              enterTo="opacity-100 translate-y-0"
-              leave="ease-in duration-150"
-              leaveFrom="opacity-100 translate-y-0"
-              leaveTo="opacity-0 translate-y-3"
-            >
-              <Dialog.Panel className="w-full max-w-lg space-y-6 rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900">
-                <div className="space-y-1">
-                  <Dialog.Title className="text-xl font-semibold text-slate-900 dark:text-white">
-                    Create a new room
-                  </Dialog.Title>
-                  <Dialog.Description className="text-sm text-slate-500 dark:text-slate-400">
-                    Group conversations by topic, team, or project.
-                  </Dialog.Description>
-                </div>
-
-                <form className="space-y-5" onSubmit={handleCreateRoom}>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="roomName">
-                      Room name
-                    </label>
-                    <input
-                      id="roomName"
-                      type="text"
-                      value={createRoomForm.name}
-                      onChange={(event) =>
-                        setCreateRoomForm((prev) => ({ ...prev, name: event.target.value }))
-                      }
-                      placeholder="e.g. design-lab"
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="roomDescription">
-                      Description
-                    </label>
-                    <textarea
-                      id="roomDescription"
-                      rows={3}
-                      value={createRoomForm.description}
-                      onChange={(event) =>
-                        setCreateRoomForm((prev) => ({ ...prev, description: event.target.value }))
-                      }
-                      placeholder="Tell members what this room is about"
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
-                    />
-                  </div>
-
-                  <div className="space-y-3">
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Privacy</p>
-                    <div className="grid gap-3 md:grid-cols-3">
-                      {roomTypes.map((option) => (
-                        <label
-                          key={option.value}
-                          className={clsx(
-                            'cursor-pointer rounded-2xl border px-4 py-3 transition shadow-sm',
-                            createRoomForm.type === option.value
-                              ? 'border-brand-400 bg-brand-50 text-slate-900 dark:border-brand-500 dark:bg-brand-500/10 dark:text-slate-100'
-                              : 'border-slate-200 bg-white hover:border-brand-300 hover:bg-brand-50/60 dark:border-slate-700 dark:bg-slate-950 dark:hover:border-brand-500/30 dark:hover:bg-slate-900'
-                          )}
-                        >
-                          <input
-                            type="radio"
-                            name="room-type"
-                            value={option.value}
-                            checked={createRoomForm.type === option.value}
-                            onChange={() =>
-                              setCreateRoomForm((prev) => ({ ...prev, type: option.value }))
-                            }
-                            className="hidden"
-                          />
-                          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{option.label}</p>
-                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{option.description}</p>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-3">
-                    <button
-                      type="button"
-                      className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-                      onClick={() => setIsCreateRoomOpen(false)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="rounded-xl bg-brand-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:opacity-60"
-                      disabled={creatingRoom}
-                    >
-                      {creatingRoom ? 'Creating...' : 'Create room'}
-                    </button>
-                  </div>
-                </form>
-              </Dialog.Panel>
-            </Transition.Child>
-          </div>
-        </Dialog>
-      </Transition>
-
-      <Transition show={Boolean(selectedDiscoverRoom)} as={Fragment}>
-        <Dialog className="relative z-50" onClose={() => setSelectedDiscoverRoom(null)}>
-          <Transition.Child
-            as={Fragment}
-            enter="ease-out duration-200"
-            enterFrom="opacity-0"
-            enterTo="opacity-100"
-            leave="ease-in duration-150"
-            leaveFrom="opacity-100"
-            leaveTo="opacity-0"
-          >
-            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur" />
-          </Transition.Child>
-
-          <div className="fixed inset-0 flex items-center justify-center p-4">
-            <Transition.Child
-              as={Fragment}
-              enter="ease-out duration-200"
-              enterFrom="opacity-0 translate-y-3"
-              enterTo="opacity-100 translate-y-0"
-              leave="ease-in duration-150"
-              leaveFrom="opacity-100 translate-y-0"
-              leaveTo="opacity-0 translate-y-3"
-            >
-              <Dialog.Panel className="w-full max-w-xl space-y-6 rounded-3xl border border-slate-200 bg-white p-8 shadow-2xl transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900">
-                {selectedDiscoverRoom ? (
-                  <>
-                    <div className="space-y-1">
-                      <Dialog.Title className="text-xl font-semibold text-slate-900 dark:text-white">
-                        {selectedDiscoverRoom.name}
-                      </Dialog.Title>
-                      <Dialog.Description className="text-sm text-slate-500 dark:text-slate-400">
-                        Hosted by {selectedDiscoverRoom.owner} • {selectedDiscoverRoom.memberCount} member
-                        {selectedDiscoverRoom.memberCount === 1 ? '' : 's'}
-                      </Dialog.Description>
-                    </div>
-
-                    <p className="text-sm text-slate-600 dark:text-slate-300">
-                      {selectedDiscoverRoom.description || 'No description provided for this room yet.'}
-                    </p>
-
-                    {selectedDiscoverRoom.lastMessage ? (
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-300">
-                        <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">Last activity</p>
-                        <p className="mt-1 font-medium text-slate-600 dark:text-slate-200">
-                          {selectedDiscoverRoom.lastMessage.sender
-                            ? `${selectedDiscoverRoom.lastMessage.sender}: `
-                            : ''}
-                          {selectedDiscoverRoom.lastMessage.text}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                          {dayjs(selectedDiscoverRoom.lastActivity).fromNow()}
-                        </p>
-                      </div>
-                    ) : null}
-
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                      <span className="rounded-full bg-slate-100 px-3 py-1 capitalize dark:bg-slate-800">
-                        {selectedDiscoverRoom.type}
-                      </span>
-                      {selectedDiscoverRoom.hasPendingRequest ? (
-                        <span className="rounded-full bg-amber-400/20 px-3 py-1 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
-                          Request pending
-                        </span>
-                      ) : null}
-                      {selectedDiscoverRoom.isMember ? (
-                        <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300">
-                          You’re a member
-                        </span>
-                      ) : null}
-                    </div>
-
-                    <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDiscoverRoom(null)}
-                        className="rounded-xl border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-                      >
-                        Close
-                      </button>
-                      {selectedDiscoverRoom.isMember ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedDiscoverRoom(null);
-                            setActiveView('home');
-                            if (joinedRooms.some((room) => room.id === selectedDiscoverRoom.id)) {
-                              handleSelectRoom(selectedDiscoverRoom.id);
-                            } else {
-                              loadJoinedRooms({ focusRoomId: selectedDiscoverRoom.id });
-                            }
-                          }}
-                          className="rounded-xl bg-brand-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
-                        >
-                          Open chat
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleDiscoverAction(selectedDiscoverRoom)}
-                          className="rounded-xl bg-brand-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={joiningRoomId === selectedDiscoverRoom.id || selectedDiscoverRoom.hasPendingRequest}
-                        >
-                          {joiningRoomId === selectedDiscoverRoom.id
-                            ? 'Processing...'
-                            : selectedDiscoverRoom.type === 'request'
-                              ? selectedDiscoverRoom.hasPendingRequest
-                                ? 'Request pending'
-                                : 'Request to join'
-                              : 'Join room'}
-                        </button>
-                      )}
-                    </div>
-                  </>
-                ) : null}
-              </Dialog.Panel>
-            </Transition.Child>
-          </div>
-        </Dialog>
-      </Transition>
+      <DiscoverRoomModal
+        room={selectedDiscoverRoom}
+        joiningRoomId={joiningRoomId}
+        onClose={() => setSelectedDiscoverRoom(null)}
+        onJoinOrRequest={() => selectedDiscoverRoom && handleDiscoverAction(selectedDiscoverRoom)}
+        onOpenChat={() => {
+          if (!selectedDiscoverRoom) return;
+          const room = selectedDiscoverRoom;
+          setSelectedDiscoverRoom(null);
+          setActiveView('home');
+          if (joinedRooms.some((r) => r.id === room.id)) {
+            handleSelectRoom(room.id);
+          } else {
+            loadJoinedRooms({ focusRoomId: room.id });
+          }
+        }}
+        isAlreadyMember={Boolean(selectedDiscoverRoom?.isMember)}
+      />
     </div>
   );
 };
