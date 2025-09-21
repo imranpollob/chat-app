@@ -943,28 +943,34 @@ const ChatLayout = () => {
                         toggleTheme();
                       }}
                       className={clsx(
-                        'group relative flex h-8 w-16 items-center rounded-full px-2 transition-colors',
-                        isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-amber-400 hover:bg-amber-300'
+                        'group relative flex h-8 w-16 items-center rounded-full px-2 transition-colors border',
+                        isDark
+                          ? 'bg-slate-800 hover:bg-slate-700 border-slate-600'
+                          : 'bg-slate-100 hover:bg-slate-200 border-slate-300'
                       )}
                       aria-label="Toggle theme"
                       aria-pressed={isDark}
                     >
                       <SunIcon
                         className={clsx(
-                          'h-4 w-4 text-white transition-opacity',
-                          isDark ? 'opacity-60' : 'opacity-100'
+                          'h-4 w-4 transition-colors',
+                          isDark ? 'text-slate-400' : 'text-slate-700'
                         )}
                       />
                       <MoonIcon
                         className={clsx(
-                          'ml-auto h-4 w-4 text-slate-100 transition-opacity',
-                          isDark ? 'opacity-100' : 'opacity-60'
+                          'ml-auto h-4 w-4 transition-colors',
+                          isDark ? 'text-slate-200' : 'text-slate-500'
                         )}
                       />
+
+                      {/* Transparent outline circle that moves */}
                       <span
                         className={clsx(
-                          'pointer-events-none absolute left-1 top-1/2 h-6 w-6 -translate-y-1/2 rounded-full bg-white shadow-lg transition-transform',
-                          isDark ? 'translate-x-7' : 'translate-x-0'
+                          'pointer-events-none absolute top-1/2 h-6 w-6 -translate-y-1/2 rounded-full border transition-transform',
+                          isDark
+                            ? 'translate-x-[26px] border-slate-300'
+                            : 'translate-x-[-4px] border-slate-500'
                         )}
                       />
                     </button>
