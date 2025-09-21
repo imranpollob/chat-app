@@ -62,3 +62,8 @@ export const updateRoomMember = async (roomId, payload) => {
   const { data } = await httpClient.post(`/rooms/${roomId}/members`, payload);
   return data;
 };
+
+export const leaveRoom = async (roomId) => {
+  const { data } = await httpClient.post(`/rooms/${roomId}/leave`);
+  return data;
+};

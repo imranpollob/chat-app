@@ -10,7 +10,8 @@ const {
   getJoinedRooms,
   discoverRooms,
   getMembers,
-  updateMember
+  updateMember,
+  leaveRoom
 } = require('../controllers/roomController');
 
 const router = express.Router();
@@ -25,5 +26,6 @@ router.post('/:roomId/members', authMiddleware(), updateMember);
 router.get('/:roomId/requests', authMiddleware(), getPendingRequests);
 router.post('/:roomId/requests', authMiddleware(), handleJoinRequest);
 router.post('/:roomId/invite', authMiddleware(), inviteUser);
+router.post('/:roomId/leave', authMiddleware(), leaveRoom);
 
 module.exports = router;
