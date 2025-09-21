@@ -11,6 +11,7 @@ const JoinedRoomsSidebar = ({
   setJoinedSearch,
   activeRoomId,
   onSelectRoom,
+  onCreateRoom,
   onCloseDrawer,
   setActiveView,
 }) => {
@@ -39,7 +40,18 @@ const JoinedRoomsSidebar = ({
             Joined Rooms
           </h2>
         </div>
-        {/* Removed Create room button */}
+
+        <button
+          type="button"
+          onClick={() => {
+            onCreateRoom();
+            if (variant === 'drawer') onCloseDrawer?.();
+          }}
+          className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:text-brand-300 dark:hover:bg-slate-800"
+        >
+          <PlusIcon className="h-4 w-4" />
+          <span>Create room</span>
+        </button>
       </div>
 
       <div>
