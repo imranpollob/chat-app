@@ -1,10 +1,15 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Toaster } from 'react-hot-toast';
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
 import App from './App.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import ThemeProvider from './context/ThemeContext.jsx';
 import './index.css';
+
+// Ensure relative time is available globally before any component renders
+dayjs.extend(relativeTime);
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

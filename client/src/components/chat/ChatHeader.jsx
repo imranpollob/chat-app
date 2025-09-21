@@ -4,6 +4,8 @@ import { GlobeAltIcon, UserGroupIcon, LockClosedIcon } from '@heroicons/react/24
 
 const ChatHeader = ({ room }) => {
   if (!room) return null;
+  const created = room.createdAt ? dayjs(room.createdAt) : null;
+  const createdLabel = created && created.isValid() ? created.fromNow() : '—';
   return (
     <div className="flex flex-wrap items-start gap-3 border-b border-slate-200 px-6 py-4 dark:border-slate-800 sm:items-center sm:gap-4">
       <div className="order-1 flex min-w-0 flex-1 items-center gap-2 truncate">
@@ -36,7 +38,7 @@ const ChatHeader = ({ room }) => {
       </div>
       <div className="order-2 flex w-full flex-shrink-0 items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400 sm:w-auto sm:justify-end">
         <span>{room.memberCount} members</span>
-        <span>{dayjs(room.createdAt).fromNow()}</span>
+        <span>{createdLabel}</span>
       </div>
     </div>
   );

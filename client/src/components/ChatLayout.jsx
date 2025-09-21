@@ -1,24 +1,16 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, Menu, Transition } from '@headlessui/react';
 import { Bars3Icon, MoonIcon, SunIcon, PlusIcon, ChatBubbleLeftRightIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import clsx from 'clsx';
-import {
-  createRoom,
-  fetchMessages,
-  fetchRequests,
-  fetchJoinedRooms,
-  fetchDiscoverRooms,
-  inviteUser,
-  updateRequest,
-  fetchRoomMembers,
-  updateRoomMember
-} from '../api/rooms';
+import { createRoom, fetchRequests, fetchJoinedRooms, fetchDiscoverRooms, inviteUser, updateRequest } from '../api/rooms';
 import useAuth from '../hooks/useAuth';
 import useSocket from '../hooks/useSocket';
 import useTheme from '../hooks/useTheme';
+import useRoomMembers from '../hooks/useRoomMembers';
+import useMessages from '../hooks/useMessages';
 import DiscoverFilters from './chat/DiscoverFilters';
 import DiscoverGrid from './chat/DiscoverGrid';
 import DiscoverRoomModal from './chat/DiscoverRoomModal';
@@ -30,6 +22,7 @@ import CreateRoomModal from './chat/CreateRoomModal';
 import PendingRequestsList from './chat/PendingRequestsList';
 import MemberManagement from './chat/MemberManagement';
 import InviteForm from './chat/InviteForm';
+import SafeBoundary from './common/SafeBoundary';
 
 dayjs.extend(relativeTime);
 
@@ -74,10 +67,34 @@ const ChatLayout = () => {
   const [joinedSearch, setJoinedSearch] = useState('');
   const [activeRoomId, setActiveRoomId] = useState(null);
 
-  const [messages, setMessages] = useState([]);
-  const [messagesLoading, setMessagesLoading] = useState(false);
-  const [pendingState, setPendingState] = useState(false);
-  const messagesContainerRef = useRef(null);
+  // restore active room from storage on first mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('chatie.activeRoomId');
+      if (stored) {
+        setActiveRoomId(stored);
+      }
+    } catch { }
+  }, []);
+
+  const activeRoom = useMemo(
+    () => joinedRooms.find((room) => room.id === activeRoomId) || null,
+    [joinedRooms, activeRoomId]
+  );
+  const isOwner = Boolean(activeRoom?.isOwner);
+  const isModerator = Boolean(activeRoom?.isModerator);
+  const activeRoomType = activeRoom?.type || null;
+
+  const {
+    messages,
+    setMessages,
+    messagesLoading,
+    pendingState,
+    messagesRef,
+    loadMessages,
+    handleMessageSubmit,
+  } = useMessages({ socket, isReady, roomId: activeRoomId, activeView });
+  const messagesContainerRef = messagesRef;
 
   const [roomRequests, setRoomRequests] = useState([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
@@ -89,13 +106,19 @@ const ChatLayout = () => {
   const [inviteUsername, setInviteUsername] = useState('');
   const [inviting, setInviting] = useState(false);
 
-  const [roomMembers, setRoomMembers] = useState([]);
-  const [bannedUsers, setBannedUsers] = useState([]);
-  const [membersLoading, setMembersLoading] = useState(false);
-  const [memberPermissions, setMemberPermissions] = useState({
-    canManage: false,
-    canPromote: false,
-    currentRole: 'member'
+  const {
+    roomMembers,
+    bannedUsers,
+    membersLoading,
+    memberPermissions,
+    loadMembers,
+    memberAction,
+  } = useRoomMembers({
+    roomId: activeRoomId,
+    canLoad: Boolean(activeRoomId && activeView === 'home' && (isOwner || isModerator)),
+    onAfterMemberUpdate: async () => {
+      await loadJoinedRooms({ focusRoomId: activeRoomId });
+    },
   });
 
   const [discoverRooms, setDiscoverRooms] = useState([]);
@@ -110,13 +133,6 @@ const ChatLayout = () => {
   const openSidebar = useCallback(() => setIsSidebarOpen(true), []);
   const closeSidebar = useCallback(() => setIsSidebarOpen(false), []);
 
-  const activeRoom = useMemo(
-    () => joinedRooms.find((room) => room.id === activeRoomId) || null,
-    [joinedRooms, activeRoomId]
-  );
-  const isOwner = Boolean(activeRoom?.isOwner);
-  const isModerator = Boolean(activeRoom?.isModerator);
-  const activeRoomType = activeRoom?.type || null;
   const avatarInitial = useMemo(() => user?.username?.[0]?.toUpperCase() || 'U', [user?.username]);
   const connectionLabel = useMemo(() => {
     if (socketStatus === 'connected') return 'Online';
@@ -159,6 +175,17 @@ const ChatLayout = () => {
     }
   }, []);
 
+  // persist active room id changes
+  useEffect(() => {
+    try {
+      if (activeRoomId) {
+        localStorage.setItem('chatie.activeRoomId', activeRoomId);
+      } else {
+        localStorage.removeItem('chatie.activeRoomId');
+      }
+    } catch { }
+  }, [activeRoomId]);
+
   const loadDiscoverRooms = useCallback(async (params = defaultDiscoverFilter) => {
     const { search = '', type = 'all' } = params;
     try {
@@ -178,69 +205,27 @@ const ChatLayout = () => {
       setDiscoverLoading(false);
     }
   }, []);
-
-  const loadMembers = useCallback(
-    async (roomId) => {
-      if (!roomId) return;
-      try {
-        setMembersLoading(true);
-        const data = await fetchRoomMembers(roomId);
-        setRoomMembers(data.members || []);
-        setBannedUsers(data.banned || []);
-        setMemberPermissions({
-          canManage: Boolean(data.permissions?.canManage),
-          canPromote: Boolean(data.permissions?.canPromote),
-          currentRole: data.permissions?.currentRole || 'member'
-        });
-      } catch (error) {
-        const status = error.response?.status;
-        if (status !== 403) {
-          const message = error.response?.data?.message || 'Failed to load members';
-          toast.error(message);
-        }
-        setRoomMembers([]);
-        setBannedUsers([]);
-        setMemberPermissions({ canManage: false, canPromote: false, currentRole: 'member' });
-      } finally {
-        setMembersLoading(false);
-      }
-    },
-    []
-  );
+  // Members are managed by useRoomMembers hook
 
   useEffect(() => {
     discoverFilterRef.current = discoverFilter;
   }, [discoverFilter]);
-
-  const loadMessages = useCallback(async (roomId) => {
-    if (!roomId) return;
-    try {
-      setMessagesLoading(true);
-      const data = await fetchMessages(roomId);
-      setMessages(
-        data.map((message) => ({
-          id: message.id,
-          type: 'message',
-          text: message.text,
-          username: message.username,
-          timestamp: message.timestamp,
-          roomId
-        }))
-      );
-      setPendingState(false);
-    } catch (error) {
-      const message = error.response?.data?.message || 'Unable to load messages for this room';
-      setMessages([]);
-      setPendingState(true);
-      toast.error(message);
-    } finally {
-      setMessagesLoading(false);
-    }
-  }, []);
+  // Messages are managed by useMessages hook
 
   const handleSelectRoom = (roomId) => {
-    setActiveView('home');
     setActiveRoomId(roomId);
+    setActiveView('home');
+    // kick off a history load immediately to avoid blank state
+    try {
+      if (roomId) {
+        // load via hook (REST); socket join will happen when ready
+        // Note: loadMessages accepts a room id
+        // It's safe to fire without awaiting
+        loadMessages(roomId);
+      }
+    } catch (e) {
+      // optional: report silently or with toast; keeping silent here
+    }
     closeSidebar();
   };
 
@@ -311,58 +296,9 @@ const ChatLayout = () => {
     }
   };
 
-  const handleMemberAction = async (targetUserId, action) => {
-    if (!activeRoomId) return;
-    try {
-      const data = await updateRoomMember(activeRoomId, { userId: targetUserId, action });
-      toast.success(data.message);
-      setRoomMembers(data.members || []);
-      setBannedUsers(data.banned || []);
-      setMemberPermissions({
-        canManage: Boolean(data.permissions?.canManage),
-        canPromote: Boolean(data.permissions?.canPromote),
-        currentRole: data.permissions?.currentRole || 'member'
-      });
-      await loadJoinedRooms({ focusRoomId: activeRoomId });
-    } catch (error) {
-      const message = error.response?.data?.message || 'Unable to update member';
-      toast.error(message);
-    }
-  };
+  const handleMemberAction = memberAction;
 
-  const scrollMessagesToBottom = useCallback((behavior = 'smooth', force = false) => {
-    const element = messagesContainerRef.current;
-    if (!element) return;
-
-    const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
-    const isNearBottom = distanceFromBottom < 96;
-
-    if (!force && !isNearBottom) {
-      return;
-    }
-
-    element.scrollTo({ top: element.scrollHeight, behavior });
-  }, []);
-
-  const handleMessageSubmit = (event) => {
-    event.preventDefault();
-    if (!socket || !isReady || !activeRoomId) {
-      toast.error('You must join a room before sending messages');
-      return;
-    }
-
-    const formData = new FormData(event.target);
-    const text = formData.get('message');
-    if (!text?.trim()) return;
-
-    socket.emit('chatMessage', { roomId: activeRoomId, text: text.trim() }, (response) => {
-      if (response?.status === 'error') {
-        toast.error(response.message || 'Failed to send message');
-      }
-    });
-
-    event.target.reset();
-  };
+  // Message submit handled by useMessages hook
 
   const handleDiscoverSearch = (event) => {
     event.preventDefault();
@@ -409,6 +345,8 @@ const ChatLayout = () => {
     loadJoinedRooms();
   }, [loadJoinedRooms]);
 
+  // removed debug logs for activeRoom changes
+
   useEffect(() => {
     if (activeView !== 'home') {
       setIsSidebarOpen(false);
@@ -419,16 +357,6 @@ const ChatLayout = () => {
     if (activeView !== 'discover') return;
     loadDiscoverRooms(discoverFilter);
   }, [activeView, discoverFilter, loadDiscoverRooms]);
-
-  useEffect(() => {
-    if (!activeRoomId || activeView !== 'home' || !(isOwner || isModerator)) {
-      setRoomMembers([]);
-      setBannedUsers([]);
-      setMemberPermissions({ canManage: false, canPromote: false, currentRole: 'member' });
-      return;
-    }
-    loadMembers(activeRoomId);
-  }, [activeRoomId, activeView, isOwner, isModerator, loadMembers]);
 
   useEffect(() => {
     if (!socket) {
@@ -669,11 +597,7 @@ const ChatLayout = () => {
         }
       }
 
-      if (
-        payload.roomId === activeRoomId &&
-        activeView === 'home' &&
-        (isOwner || isModerator)
-      ) {
+      if (payload.roomId === activeRoomId && activeView === 'home' && (isOwner || isModerator)) {
         loadMembers(payload.roomId);
       }
     };
@@ -702,11 +626,6 @@ const ChatLayout = () => {
             socket.emit('leaveRoom', { roomId });
           }
           setActiveRoomId(null);
-          setMessages([]);
-          setPendingState(false);
-          setRoomMembers([]);
-          setBannedUsers([]);
-          setMemberPermissions({ canManage: false, canPromote: false, currentRole: 'member' });
         } else if (action === 'promote' || action === 'demote') {
           loadMembers(roomId);
         } else if (action === 'unban' && banned === false) {
@@ -747,35 +666,7 @@ const ChatLayout = () => {
     loadMembers
   ]);
 
-  useEffect(() => {
-    if (!socket || !activeRoomId || !isReady || activeView !== 'home') return;
-
-    setMessages([]);
-    setPendingState(false);
-
-    socket.emit('joinRoom', { roomId: activeRoomId }, async (response) => {
-      if (!response) {
-        await loadMessages(activeRoomId);
-        return;
-      }
-
-      if (response.status === 'pending') {
-        setPendingState(true);
-        setMessages([]);
-        toast('Join request sent to the room owner.');
-        return;
-      }
-
-      if (response.status === 'error') {
-        setPendingState(true);
-        setMessages([]);
-        toast.error(response.message || 'Unable to join room');
-        return;
-      }
-
-      await loadMessages(activeRoomId);
-    });
-  }, [socket, isReady, activeRoomId, activeView, loadMessages]);
+  // Join and message loading handled by useMessages
 
   useEffect(() => {
     if (
@@ -805,23 +696,8 @@ const ChatLayout = () => {
     loadRequests();
   }, [activeRoomId, isOwner, isModerator, activeView, activeRoom]);
 
-  useEffect(() => {
-    if (!activeRoomId) {
-      setMessages([]);
-      setPendingState(false);
-    }
-  }, [activeRoomId]);
-
-  useLayoutEffect(() => {
-    if (!activeRoomId || messagesLoading) return;
-    scrollMessagesToBottom('auto', true);
-  }, [activeRoomId, messagesLoading, pendingState, scrollMessagesToBottom]);
-
-  useLayoutEffect(() => {
-    if (messagesLoading || messages.length === 0) return;
-    const behavior = messages.length <= 1 ? 'auto' : 'smooth';
-    scrollMessagesToBottom(behavior);
-  }, [messages, messagesLoading, scrollMessagesToBottom]);
+  // Message reset on room change handled by useMessages
+  // Auto-scroll handled by useMessages
 
   // renderJoinedSidebarContent replaced by JoinedRoomsSidebar component
 
@@ -882,28 +758,36 @@ const ChatLayout = () => {
         </div>
 
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-md transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900">
-          {activeRoom ? (
-            <>
-              <ChatHeader room={activeRoom} />
-
-              <MessageList messagesRef={messagesContainerRef} messages={messages} loading={messagesLoading} pending={pendingState} />
-
-              <MessageComposer
-                disabled={!activeRoom || messagesLoading || pendingState}
-                pendingPlaceholder={pendingState ? 'Awaiting approval...' : 'Write a message'}
-                onSubmit={handleMessageSubmit}
-              />
-            </>
-          ) : (
-            <div className="flex h-[520px] flex-col items-center justify-center gap-3 bg-slate-50/70 px-6 text-center transition-colors duration-300 dark:bg-slate-950/40">
-              <p className="text-base font-medium text-slate-600 dark:text-slate-300">
-                Select a room to start chatting.
-              </p>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                Choose from your joined rooms on the left or discover new communities to join.
-              </p>
-            </div>
-          )}
+          <SafeBoundary>
+            {activeRoom || activeRoomId ? (
+              <>
+                <ChatHeader
+                  room={activeRoom || {
+                    id: activeRoomId,
+                    name: 'Loading…',
+                    type: 'public',
+                    memberCount: 0,
+                    createdAt: null,
+                  }}
+                />
+                <MessageList messagesRef={messagesContainerRef} messages={messages} loading={messagesLoading} pending={pendingState} />
+                <MessageComposer
+                  disabled={!activeRoomId || messagesLoading || pendingState}
+                  pendingPlaceholder={pendingState ? 'Awaiting approval...' : 'Write a message'}
+                  onSubmit={handleMessageSubmit}
+                />
+              </>
+            ) : (
+              <div className="flex h-[520px] flex-col items-center justify-center gap-3 bg-slate-50/70 px-6 text-center transition-colors duration-300 dark:bg-slate-950/40">
+                <p className="text-base font-medium text-slate-600 dark:text-slate-300">
+                  Select a room to start chatting.
+                </p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Choose from your joined rooms on the left or discover new communities to join.
+                </p>
+              </div>
+            )}
+          </SafeBoundary>
         </div>
 
         {activeRoom && (isOwner || isModerator) ? (
@@ -928,7 +812,7 @@ const ChatLayout = () => {
               loading={membersLoading}
               canManageMembers={canManageMembers}
               canPromoteMembers={canPromoteMembers}
-              currentUserId={user.id}
+              currentUserId={user?.id}
               currentRole={currentRoomRole}
               onAction={handleMemberAction}
             />

@@ -1,12 +1,7 @@
 import dayjs from 'dayjs';
 import clsx from 'clsx';
 
-const MessageList = ({
-  messagesRef,
-  messages,
-  loading,
-  pending,
-}) => {
+const MessageList = ({ messagesRef, messages, loading, pending }) => {
   return (
     <div
       ref={messagesRef}
