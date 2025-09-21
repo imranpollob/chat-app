@@ -46,6 +46,11 @@ const registerSocket = (io) => {
         const isOwner = room.owner.toString() === userId;
         const memberIds = room.members.map((memberId) => memberId.toString());
         const isMember = isOwner || memberIds.includes(userId);
+        const bannedIds = room.banned.map((bannedId) => bannedId.toString());
+
+        if (bannedIds.includes(userId)) {
+          throw createError(403, 'You are banned from this room');
+        }
 
         if (room.type === 'private' && !isMember) {
           throw createError(403, 'You do not have access to this private room');

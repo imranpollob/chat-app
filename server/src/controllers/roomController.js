@@ -3,7 +3,7 @@ const Room = require('../models/Room');
 const User = require('../models/User');
 const Message = require('../models/Message');
 const asyncHandler = require('../utils/asyncHandler');
-const { emitToUser } = require('../sockets/socketRegistry');
+const { emitToUser, emitToRoom } = require('../sockets/socketRegistry');
 
 const normalizeId = (value) => {
   if (!value) return null;
@@ -15,16 +15,85 @@ const normalizeId = (value) => {
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const formatRoom = (room, currentUserId, extras = {}) => {
-  const memberIds = Array.isArray(room.members)
-    ? room.members.map((member) => normalizeId(member)).filter(Boolean)
+const getMemberIds = (room) =>
+  Array.isArray(room.members) ? room.members.map((member) => normalizeId(member)).filter(Boolean) : [];
+
+const getModeratorIds = (room) =>
+  Array.isArray(room.moderators)
+    ? room.moderators.map((moderator) => normalizeId(moderator)).filter(Boolean)
     : [];
+
+const getBannedIds = (room) =>
+  Array.isArray(room.banned) ? room.banned.map((userId) => normalizeId(userId)).filter(Boolean) : [];
+
+const getUserRole = (room, userId) => {
+  if (!userId) return 'guest';
+  const normalized = userId.toString();
+  const ownerId = normalizeId(room.owner);
+  if (ownerId === normalized) {
+    return 'owner';
+  }
+  if (getModeratorIds(room).includes(normalized)) {
+    return 'moderator';
+  }
+  if (getMemberIds(room).includes(normalized)) {
+    return 'member';
+  }
+  return 'guest';
+};
+
+const canManageRoom = (room, userId) => {
+  const role = getUserRole(room, userId);
+  return role === 'owner' || role === 'moderator';
+};
+
+const ensureActorCanManageMembers = (room, actorId) => {
+  if (!canManageRoom(room, actorId)) {
+    throw createError(403, 'You do not have permission to manage this room');
+  }
+};
+
+const buildMembersPayload = async (room) => {
+  const ownerId = normalizeId(room.owner);
+  const memberIds = getMemberIds(room);
+  const moderatorIds = getModeratorIds(room);
+  const uniqueMemberIds = Array.from(new Set([ownerId, ...memberIds]));
+
+  const users = await User.find({ _id: { $in: uniqueMemberIds } })
+    .select('_id username')
+    .lean();
+  const userMap = new Map();
+  users.forEach((user) => {
+    userMap.set(user._id.toString(), user.username);
+  });
+
+  const members = uniqueMemberIds.map((id) => ({
+    id,
+    username: userMap.get(id) || 'Unknown user',
+    role: id === ownerId ? 'owner' : moderatorIds.includes(id) ? 'moderator' : 'member'
+  }));
+
+  const bannedIds = getBannedIds(room);
+  const bannedUsers = bannedIds.length
+    ? await User.find({ _id: { $in: bannedIds } }).select('_id username').lean()
+    : [];
+
+  const banned = bannedUsers.map((user) => ({ id: user._id.toString(), username: user.username }));
+
+  return { members, banned };
+};
+
+const formatRoom = (room, currentUserId, extras = {}) => {
   const ownerId = normalizeId(room.owner);
   const userId = currentUserId ? currentUserId.toString() : null;
+  const memberIds = getMemberIds(room);
+  const moderatorIds = getModeratorIds(room);
+  const bannedIds = getBannedIds(room);
   const isOwner = userId ? ownerId === userId : false;
-  const isMember = userId ? isOwner || memberIds.includes(userId) : false;
+  const isModerator = userId ? moderatorIds.includes(userId) : false;
+  const isMember = userId ? isOwner || isModerator || memberIds.includes(userId) : false;
 
-  return {
+  const payload = {
     id: room._id,
     name: room.name,
     description: room.description,
@@ -34,11 +103,24 @@ const formatRoom = (room, currentUserId, extras = {}) => {
     pendingCount: room.pendingRequests?.length || 0,
     isOwner,
     isMember,
+    isModerator,
+    moderatorCount: moderatorIds.length,
+    bannedCount: bannedIds.length,
     hasPendingRequest: extras.hasPendingRequest ?? false,
     lastMessage: extras.lastMessage || null,
     lastActivity: extras.lastActivity || room.updatedAt || room.createdAt,
     createdAt: room.createdAt
   };
+
+  if (typeof extras.moderators !== 'undefined') {
+    payload.moderators = extras.moderators;
+  }
+
+  if (typeof extras.banned !== 'undefined') {
+    payload.banned = extras.banned;
+  }
+
+  return payload;
 };
 
 const getLastMessagesForRooms = async (roomIds) => {
@@ -94,7 +176,8 @@ exports.listRooms = asyncHandler(async (req, res) => {
   const publicRooms = await Room.find({ type: { $in: ['public', 'request'] } })
     .sort({ name: 1 })
     .populate('owner', 'username')
-    .populate('members', '_id');
+    .populate('members', '_id')
+    .populate('moderators', '_id username');
 
   let rooms = [...publicRooms];
 
@@ -105,7 +188,8 @@ exports.listRooms = asyncHandler(async (req, res) => {
     })
       .sort({ name: 1 })
       .populate('owner', 'username')
-      .populate('members', '_id');
+      .populate('members', '_id')
+      .populate('moderators', '_id username');
 
     rooms = rooms.concat(memberRooms);
   }
@@ -234,13 +318,14 @@ exports.createRoom = asyncHandler(async (req, res) => {
 exports.getPendingRequests = asyncHandler(async (req, res) => {
   const room = await Room.findById(req.params.roomId)
     .populate('owner', 'username')
-    .populate('pendingRequests', 'username');
+    .populate('pendingRequests', 'username')
+    .populate('moderators', '_id username');
 
   if (!room) {
     throw createError(404, 'Room not found');
   }
 
-  if (room.owner._id.toString() !== req.user.id) {
+  if (!canManageRoom(room, req.user.id)) {
     throw createError(403, 'You do not have permission to manage this room');
   }
 
@@ -261,13 +346,13 @@ exports.getPendingRequests = asyncHandler(async (req, res) => {
 
 exports.handleJoinRequest = asyncHandler(async (req, res) => {
   const { action, userId } = req.body;
-  const room = await Room.findById(req.params.roomId);
+  const room = await Room.findById(req.params.roomId).populate('moderators', '_id');
 
   if (!room) {
     throw createError(404, 'Room not found');
   }
 
-  if (room.owner.toString() !== req.user.id) {
+  if (!canManageRoom(room, req.user.id)) {
     throw createError(403, 'You do not have permission to manage this room');
   }
 
@@ -352,7 +437,7 @@ exports.inviteUser = asyncHandler(async (req, res) => {
     throw createError(404, 'Room not found');
   }
 
-  if (room.owner.toString() !== req.user.id) {
+  if (!canManageRoom(room, req.user.id)) {
     throw createError(403, 'You do not have permission to manage this room');
   }
 
@@ -386,6 +471,182 @@ exports.inviteUser = asyncHandler(async (req, res) => {
   });
 });
 
+exports.getMembers = asyncHandler(async (req, res) => {
+  const room = await Room.findById(req.params.roomId);
+
+  if (!room) {
+    throw createError(404, 'Room not found');
+  }
+
+  const currentUserId = req.user?.id;
+  const currentRole = getUserRole(room, currentUserId);
+
+  if (currentRole === 'guest') {
+    throw createError(403, 'You must be a member of this room');
+  }
+
+  const membership = await buildMembersPayload(room);
+
+  res.json({
+    ...membership,
+    permissions: {
+      canManage: canManageRoom(room, currentUserId),
+      canPromote: currentRole === 'owner',
+      currentRole
+    }
+  });
+});
+
+exports.updateMember = asyncHandler(async (req, res) => {
+  const { action, userId: targetUserId } = req.body;
+  const actorId = req.user.id;
+
+  if (!action || !targetUserId) {
+    throw createError(400, 'Action and userId are required');
+  }
+
+  const room = await Room.findById(req.params.roomId);
+
+  if (!room) {
+    throw createError(404, 'Room not found');
+  }
+
+  ensureActorCanManageMembers(room, actorId);
+
+  const actorRole = getUserRole(room, actorId);
+  const targetId = normalizeId(targetUserId);
+  const ownerId = normalizeId(room.owner);
+  const memberIds = getMemberIds(room);
+  const moderatorIds = getModeratorIds(room);
+  const bannedIds = getBannedIds(room);
+
+  if (targetId === ownerId) {
+    throw createError(400, 'You cannot modify the room owner');
+  }
+
+  const targetUser = await User.findById(targetUserId);
+  if (!targetUser) {
+    throw createError(404, 'Target user not found');
+  }
+
+  let message;
+
+  const removeFromMembers = () => {
+    room.members = room.members.filter((member) => normalizeId(member) !== targetId);
+    room.moderators = room.moderators.filter((moderator) => normalizeId(moderator) !== targetId);
+    room.pendingRequests = room.pendingRequests.filter((pending) => normalizeId(pending) !== targetId);
+  };
+
+  switch (action) {
+    case 'promote': {
+      if (actorRole !== 'owner') {
+        throw createError(403, 'Only the owner can promote members');
+      }
+
+      if (moderatorIds.includes(targetId)) {
+        throw createError(400, 'User is already a moderator');
+      }
+
+      if (!memberIds.includes(targetId)) {
+        throw createError(400, 'User must be a member before being promoted');
+      }
+
+      room.moderators.push(targetUser._id);
+      message = `${targetUser.username} is now a moderator.`;
+      break;
+    }
+    case 'demote': {
+      if (actorRole !== 'owner') {
+        throw createError(403, 'Only the owner can demote moderators');
+      }
+
+      if (!moderatorIds.includes(targetId)) {
+        throw createError(400, 'User is not a moderator');
+      }
+
+      room.moderators = room.moderators.filter((moderator) => normalizeId(moderator) !== targetId);
+      message = `${targetUser.username} is no longer a moderator.`;
+      break;
+    }
+    case 'remove': {
+      const targetRole = getUserRole(room, targetId);
+      if (targetRole === 'guest') {
+        throw createError(400, 'User is not a member of this room');
+      }
+      if (targetRole === 'moderator' && actorRole !== 'owner') {
+        throw createError(403, 'Only the owner can remove a moderator');
+      }
+
+      removeFromMembers();
+      message = `${targetUser.username} has been removed from the room.`;
+      break;
+    }
+    case 'ban': {
+      const targetRole = getUserRole(room, targetId);
+      if (targetRole === 'moderator' && actorRole !== 'owner') {
+        throw createError(403, 'Only the owner can ban a moderator');
+      }
+
+      if (bannedIds.includes(targetId)) {
+        throw createError(400, 'User is already banned');
+      }
+
+      removeFromMembers();
+      room.banned.push(targetUser._id);
+      message = `${targetUser.username} has been banned.`;
+      break;
+    }
+    case 'unban': {
+      if (!bannedIds.includes(targetId)) {
+        throw createError(400, 'User is not banned');
+      }
+
+      room.banned = room.banned.filter((bannedUser) => normalizeId(bannedUser) !== targetId);
+      message = `${targetUser.username} has been unbanned.`;
+      break;
+    }
+    default:
+      throw createError(400, 'Unsupported action');
+  }
+
+  await room.save();
+
+  const actorRoleAfter = getUserRole(room, actorId);
+  const targetRoleAfter = getUserRole(room, targetId);
+
+  const membership = await buildMembersPayload(room);
+
+  res.json({
+    message,
+    members: membership.members,
+    banned: membership.banned,
+    permissions: {
+      canManage: canManageRoom(room, actorId),
+      canPromote: actorRoleAfter === 'owner',
+      currentRole: actorRoleAfter
+    }
+  });
+
+  emitToRoom(room._id, 'room:memberAction', {
+    roomId: room._id.toString(),
+    action,
+    user: { id: targetId, username: targetUser.username },
+    actor: { id: actorId, username: req.user.username },
+    memberCount: room.members.length,
+    moderatorCount: room.moderators.length,
+    bannedCount: room.banned.length,
+    role: targetRoleAfter
+  });
+
+  emitToUser(targetId, 'room:membershipUpdate', {
+    roomId: room._id.toString(),
+    roomName: room.name,
+    action,
+    role: targetRoleAfter,
+    banned: getBannedIds(room).includes(targetId)
+  });
+});
+
 exports.getMessages = asyncHandler(async (req, res) => {
   const room = await Room.findById(req.params.roomId).populate('owner', '_id');
 
@@ -394,6 +655,10 @@ exports.getMessages = asyncHandler(async (req, res) => {
   }
 
   const userId = req.user?.id;
+
+  if (userId && getBannedIds(room).includes(userId.toString())) {
+    throw createError(403, 'You are banned from this room');
+  }
 
   if (room.type !== 'public') {
     if (!userId) {

@@ -42,6 +42,24 @@ const roomSchema = new mongoose.Schema(
         }
       ],
       default: []
+    },
+    moderators: {
+      type: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User'
+        }
+      ],
+      default: []
+    },
+    banned: {
+      type: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User'
+        }
+      ],
+      default: []
     }
   },
   {
@@ -51,5 +69,7 @@ const roomSchema = new mongoose.Schema(
 
 roomSchema.index({ owner: 1 });
 roomSchema.index({ type: 1 });
+roomSchema.index({ moderators: 1 });
+roomSchema.index({ banned: 1 });
 
 module.exports = mongoose.model('Room', roomSchema);

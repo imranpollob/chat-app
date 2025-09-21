@@ -8,7 +8,10 @@ import {
   UserPlusIcon,
   XMarkIcon,
   ChatBubbleLeftRightIcon,
-  ChevronDownIcon
+  ChevronDownIcon,
+  GlobeAltIcon,
+  UserGroupIcon,
+  LockClosedIcon
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
@@ -21,7 +24,9 @@ import {
   fetchJoinedRooms,
   fetchDiscoverRooms,
   inviteUser,
-  updateRequest
+  updateRequest,
+  fetchRoomMembers,
+  updateRoomMember
 } from '../api/rooms';
 import useAuth from '../hooks/useAuth';
 import useSocket from '../hooks/useSocket';
@@ -85,6 +90,15 @@ const ChatLayout = () => {
   const [inviteUsername, setInviteUsername] = useState('');
   const [inviting, setInviting] = useState(false);
 
+  const [roomMembers, setRoomMembers] = useState([]);
+  const [bannedUsers, setBannedUsers] = useState([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [memberPermissions, setMemberPermissions] = useState({
+    canManage: false,
+    canPromote: false,
+    currentRole: 'member'
+  });
+
   const [discoverRooms, setDiscoverRooms] = useState([]);
   const [discoverLoading, setDiscoverLoading] = useState(false);
   const [discoverSearchInput, setDiscoverSearchInput] = useState('');
@@ -102,6 +116,7 @@ const ChatLayout = () => {
     [joinedRooms, activeRoomId]
   );
   const isOwner = Boolean(activeRoom?.isOwner);
+  const isModerator = Boolean(activeRoom?.isModerator);
   const activeRoomType = activeRoom?.type || null;
   const avatarInitial = useMemo(() => user?.username?.[0]?.toUpperCase() || 'U', [user?.username]);
   const connectionLabel = useMemo(() => {
@@ -109,6 +124,9 @@ const ChatLayout = () => {
     if (socketStatus === 'error') return 'Error';
     return 'Offline';
   }, [socketStatus]);
+  const canManageMembers = memberPermissions.canManage;
+  const canPromoteMembers = memberPermissions.canPromote;
+  const currentRoomRole = memberPermissions.currentRole;
 
   const filteredJoinedRooms = useMemo(() => {
     if (!joinedSearch.trim()) {
@@ -159,6 +177,35 @@ const ChatLayout = () => {
       setDiscoverLoading(false);
     }
   }, []);
+
+  const loadMembers = useCallback(
+    async (roomId) => {
+      if (!roomId) return;
+      try {
+        setMembersLoading(true);
+        const data = await fetchRoomMembers(roomId);
+        setRoomMembers(data.members || []);
+        setBannedUsers(data.banned || []);
+        setMemberPermissions({
+          canManage: Boolean(data.permissions?.canManage),
+          canPromote: Boolean(data.permissions?.canPromote),
+          currentRole: data.permissions?.currentRole || 'member'
+        });
+      } catch (error) {
+        const status = error.response?.status;
+        if (status !== 403) {
+          const message = error.response?.data?.message || 'Failed to load members';
+          toast.error(message);
+        }
+        setRoomMembers([]);
+        setBannedUsers([]);
+        setMemberPermissions({ canManage: false, canPromote: false, currentRole: 'member' });
+      } finally {
+        setMembersLoading(false);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     discoverFilterRef.current = discoverFilter;
@@ -240,6 +287,10 @@ const ChatLayout = () => {
 
   const handleInvite = async (event) => {
     event.preventDefault();
+    if (!isOwner) {
+      toast.error('Only the room owner can invite users.');
+      return;
+    }
     if (!inviteUsername.trim()) {
       toast.error('Enter a username to invite');
       return;
@@ -256,6 +307,25 @@ const ChatLayout = () => {
       toast.error(message);
     } finally {
       setInviting(false);
+    }
+  };
+
+  const handleMemberAction = async (targetUserId, action) => {
+    if (!activeRoomId) return;
+    try {
+      const data = await updateRoomMember(activeRoomId, { userId: targetUserId, action });
+      toast.success(data.message);
+      setRoomMembers(data.members || []);
+      setBannedUsers(data.banned || []);
+      setMemberPermissions({
+        canManage: Boolean(data.permissions?.canManage),
+        canPromote: Boolean(data.permissions?.canPromote),
+        currentRole: data.permissions?.currentRole || 'member'
+      });
+      await loadJoinedRooms({ focusRoomId: activeRoomId });
+    } catch (error) {
+      const message = error.response?.data?.message || 'Unable to update member';
+      toast.error(message);
     }
   };
 
@@ -348,6 +418,16 @@ const ChatLayout = () => {
     if (activeView !== 'discover') return;
     loadDiscoverRooms(discoverFilter);
   }, [activeView, discoverFilter, loadDiscoverRooms]);
+
+  useEffect(() => {
+    if (!activeRoomId || activeView !== 'home' || !(isOwner || isModerator)) {
+      setRoomMembers([]);
+      setBannedUsers([]);
+      setMemberPermissions({ canManage: false, canPromote: false, currentRole: 'member' });
+      return;
+    }
+    loadMembers(activeRoomId);
+  }, [activeRoomId, activeView, isOwner, isModerator, loadMembers]);
 
   useEffect(() => {
     if (!socket) {
@@ -548,12 +628,100 @@ const ChatLayout = () => {
       }
     };
 
+    const handleMemberBroadcast = (payload) => {
+      if (!payload) return;
+      setJoinedRooms((previous) =>
+        previous.map((room) => {
+          if (room.id !== payload.roomId) {
+            return room;
+          }
+          const updated = {
+            ...room,
+            memberCount: payload.memberCount ?? room.memberCount,
+            moderatorCount: payload.moderatorCount ?? room.moderatorCount,
+            bannedCount: payload.bannedCount ?? room.bannedCount
+          };
+          if (payload.user?.id === user?.id) {
+            if (payload.action === 'promote') {
+              updated.isModerator = true;
+              updated.isMember = true;
+            } else if (payload.action === 'demote') {
+              updated.isModerator = false;
+            } else if (payload.action === 'remove' || payload.action === 'ban') {
+              updated.isMember = false;
+              updated.isModerator = false;
+            }
+          }
+          return updated;
+        })
+      );
+
+      if (payload.actor?.id !== user?.id) {
+        if (payload.action === 'ban') {
+          toast.error(`${payload.user?.username || 'A member'} was banned.`);
+        } else if (payload.action === 'remove') {
+          toast(`${payload.user?.username || 'A member'} was removed from the room.`);
+        } else if (payload.action === 'promote') {
+          toast.success(`${payload.user?.username || 'A member'} is now a moderator.`);
+        } else if (payload.action === 'demote') {
+          toast(`${payload.user?.username || 'A member'} is no longer a moderator.`);
+        }
+      }
+
+      if (
+        payload.roomId === activeRoomId &&
+        activeView === 'home' &&
+        (isOwner || isModerator)
+      ) {
+        loadMembers(payload.roomId);
+      }
+    };
+
+    const handleMembershipUpdate = (payload) => {
+      if (!payload) return;
+      const { roomId, action, roomName, banned } = payload;
+
+      if (action === 'ban') {
+        toast.error(`You have been banned from ${roomName}.`);
+      } else if (action === 'remove') {
+        toast(`You have been removed from ${roomName}.`);
+      } else if (action === 'promote') {
+        toast.success(`You are now a moderator in ${roomName}.`);
+      } else if (action === 'demote') {
+        toast(`You are no longer a moderator in ${roomName}.`);
+      } else if (action === 'unban') {
+        toast.success(`You have been unbanned from ${roomName}.`);
+      }
+
+      loadJoinedRooms({ focusRoomId: action === 'ban' || action === 'remove' ? undefined : roomId });
+
+      if (roomId === activeRoomId) {
+        if (action === 'ban' || action === 'remove') {
+          if (socket) {
+            socket.emit('leaveRoom', { roomId });
+          }
+          setActiveRoomId(null);
+          setMessages([]);
+          setPendingState(false);
+          setRoomMembers([]);
+          setBannedUsers([]);
+          setMemberPermissions({ canManage: false, canPromote: false, currentRole: 'member' });
+        } else if (action === 'promote' || action === 'demote') {
+          loadMembers(roomId);
+        } else if (action === 'unban' && banned === false) {
+          loadMembers(roomId);
+        }
+      }
+    };
+
     socket.on('room:message', handleIncomingMessage);
     socket.on('room:userEvent', handleUserEvent);
     socket.on('room:requestCreated', handleRequestCreated);
     socket.on('room:requestResolved', handleRequestResolved);
     socket.on('room:membershipApproved', handleMembershipApproved);
     socket.on('room:membershipDenied', handleMembershipDenied);
+    socket.on('room:memberAction', handleMemberBroadcast);
+    socket.on('room:membershipUpdate', handleMembershipUpdate);
 
     return () => {
       socket.off('room:message', handleIncomingMessage);
@@ -562,8 +730,21 @@ const ChatLayout = () => {
       socket.off('room:requestResolved', handleRequestResolved);
       socket.off('room:membershipApproved', handleMembershipApproved);
       socket.off('room:membershipDenied', handleMembershipDenied);
+      socket.off('room:memberAction', handleMemberBroadcast);
+      socket.off('room:membershipUpdate', handleMembershipUpdate);
     };
-  }, [socket, activeRoomId, activeRoomType, user?.id, loadJoinedRooms, loadDiscoverRooms, activeView]);
+  }, [
+    socket,
+    activeRoomId,
+    activeRoomType,
+    user?.id,
+    loadJoinedRooms,
+    loadDiscoverRooms,
+    activeView,
+    isOwner,
+    isModerator,
+    loadMembers
+  ]);
 
   useEffect(() => {
     if (!socket || !activeRoomId || !isReady || activeView !== 'home') return;
@@ -596,7 +777,13 @@ const ChatLayout = () => {
   }, [socket, isReady, activeRoomId, activeView, loadMessages]);
 
   useEffect(() => {
-    if (!activeRoomId || !isOwner || activeView !== 'home' || !activeRoom || activeRoom.type !== 'request') {
+    if (
+      !activeRoomId ||
+      !(isOwner || isModerator) ||
+      activeView !== 'home' ||
+      !activeRoom ||
+      activeRoom.type !== 'request'
+    ) {
       setRoomRequests([]);
       return;
     }
@@ -615,7 +802,7 @@ const ChatLayout = () => {
     };
 
     loadRequests();
-  }, [activeRoomId, isOwner, activeView, activeRoom]);
+  }, [activeRoomId, isOwner, isModerator, activeView, activeRoom]);
 
   useEffect(() => {
     if (!activeRoomId) {
@@ -710,22 +897,26 @@ const ChatLayout = () => {
                         : 'border-transparent bg-white hover:border-brand-300 hover:bg-brand-50/70 dark:bg-slate-900/50 dark:hover:border-brand-500/30 dark:hover:bg-slate-900'
                     )}
                   >
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white">{room.name}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-semibold text-slate-900 dark:text-white" title={room.name}>
+                        {room.name}
+                      </p>
                       <span className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         {room.lastActivity ? dayjs(room.lastActivity).fromNow() : '—'}
                       </span>
                     </div>
                     <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{preview}</p>
-                    <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                      <span className="capitalize">{room.type}</span>
-                      <span>• {room.memberCount} member{room.memberCount === 1 ? '' : 's'}</span>
-                      <span>• Owner: {room.isOwner ? 'You' : room.owner}</span>
-                      {room.pendingCount > 0 && room.isOwner && room.type === 'request' ? (
-                        <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
-                          {room.pendingCount} pending
-                        </span>
-                      ) : null}
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="capitalize">{room.type}</span>
+                    <span>• {room.memberCount} member{room.memberCount === 1 ? '' : 's'}</span>
+                    <span>
+                      • Role: {room.isOwner ? 'Owner' : room.isModerator ? 'Moderator' : 'Member'}
+                    </span>
+                    {room.pendingCount > 0 && room.isOwner && room.type === 'request' ? (
+                      <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
+                        {room.pendingCount} pending
+                      </span>
+                    ) : null}
                     </div>
                   </button>
                 );
@@ -799,12 +990,38 @@ const ChatLayout = () => {
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-md transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900">
           {activeRoom ? (
             <>
-              <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">{activeRoom.name}</h2>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {activeRoom.description || 'Welcome to your chatroom.'}
-                  </p>
+              <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-6 py-4 dark:border-slate-800">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 truncate">
+                    <h2 className="truncate text-lg font-semibold text-slate-900 dark:text-white">
+                      {activeRoom.name}
+                    </h2>
+                    <span
+                      className={clsx(
+                        'inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border text-xs font-semibold uppercase transition',
+                        activeRoom.type === 'public'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-200'
+                          : activeRoom.type === 'request'
+                            ? 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/40 dark:bg-amber-500/20 dark:text-amber-200'
+                            : 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-500/40 dark:bg-blue-500/20 dark:text-blue-200'
+                      )}
+                      title={
+                        activeRoom.type === 'public'
+                          ? 'Public room'
+                          : activeRoom.type === 'request'
+                            ? 'Request-to-join room'
+                            : 'Private room'
+                      }
+                    >
+                      {activeRoom.type === 'public' ? (
+                        <GlobeAltIcon className="h-4 w-4" />
+                      ) : activeRoom.type === 'request' ? (
+                        <UserGroupIcon className="h-4 w-4" />
+                      ) : (
+                        <LockClosedIcon className="h-4 w-4" />
+                      )}
+                    </span>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
                   <span>{activeRoom.memberCount} members</span>
@@ -882,14 +1099,19 @@ const ChatLayout = () => {
           )}
         </div>
 
-        {activeRoom && isOwner ? (
+        {activeRoom && (isOwner || isModerator) ? (
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-md transition-colors duration-300 dark:border-slate-900 dark:bg-slate-900">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Owner tools
+                  {isOwner ? 'Owner tools' : 'Moderator tools'}
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Manage join requests and invite users.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Manage members, requests, and room access.
+                </p>
+                <p className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  Your role: {currentRoomRole}
+                </p>
               </div>
             </div>
 
@@ -934,28 +1156,132 @@ const ChatLayout = () => {
               </div>
             ) : null}
 
-            <div className="mt-6">
-              <h4 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Invite teammates</h4>
-              <form className="mt-3 flex flex-col gap-3 sm:flex-row" onSubmit={handleInvite}>
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    value={inviteUsername}
-                    onChange={(event) => setInviteUsername(event.target.value)}
-                    placeholder="Enter username"
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
-                  />
+            {canManageMembers ? (
+              <div className="mt-6">
+                <h4 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Members</h4>
+                {membersLoading ? (
+                  <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Loading members...</p>
+                ) : roomMembers.length === 0 ? (
+                  <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">No members found.</p>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    {roomMembers.map((member) => {
+                      const isSelf = member.id === user.id;
+                      const isTargetOwner = member.role === 'owner';
+                      const isTargetModerator = member.role === 'moderator';
+                      const canRemove =
+                        !isSelf &&
+                        !isTargetOwner &&
+                        ((canPromoteMembers && (member.role === 'member' || isTargetModerator)) ||
+                          (currentRoomRole === 'moderator' && member.role === 'member'));
+                      const canBan = canRemove;
+                      const canPromote = canPromoteMembers && member.role === 'member';
+                      const canDemote = canPromoteMembers && member.role === 'moderator';
+
+                      return (
+                        <div
+                          key={member.id}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm transition dark:border-slate-800 dark:bg-slate-900"
+                        >
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-slate-900 dark:text-slate-100">{member.username}</p>
+                        <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                          {member.role === 'owner' ? 'Moderator' : member.role}
+                        </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {canPromote ? (
+                              <button
+                                type="button"
+                                onClick={() => handleMemberAction(member.id, 'promote')}
+                                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                              >
+                                Promote
+                              </button>
+                            ) : null}
+                            {canDemote ? (
+                              <button
+                                type="button"
+                                onClick={() => handleMemberAction(member.id, 'demote')}
+                                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                              >
+                                Demote
+                              </button>
+                            ) : null}
+                            {canRemove ? (
+                              <button
+                                type="button"
+                                onClick={() => handleMemberAction(member.id, 'remove')}
+                                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-amber-600 transition hover:bg-amber-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 dark:border-slate-700 dark:text-amber-300 dark:hover:bg-slate-800/70"
+                              >
+                                Remove
+                              </button>
+                            ) : null}
+                            {canBan ? (
+                              <button
+                                type="button"
+                                onClick={() => handleMemberAction(member.id, 'ban')}
+                                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-400 dark:border-slate-700 dark:text-rose-400 dark:hover:bg-rose-500/20"
+                              >
+                                Ban
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {canManageMembers && bannedUsers.length > 0 ? (
+              <div className="mt-6">
+                <h4 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Banned</h4>
+                <div className="mt-3 space-y-2">
+                  {bannedUsers.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm transition dark:border-slate-800 dark:bg-slate-900"
+                    >
+                      <span className="text-slate-700 dark:text-slate-200">{entry.username}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleMemberAction(entry.id, 'unban')}
+                        className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 dark:border-slate-700 dark:text-emerald-300 dark:hover:bg-emerald-500/20"
+                      >
+                        Unban
+                      </button>
+                    </div>
+                  ))}
                 </div>
-                <button
-                  type="submit"
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={inviting}
-                >
-                  <UserPlusIcon className="h-4 w-4" />
-                  {inviting ? 'Inviting...' : 'Send invite'}
-                </button>
-              </form>
-            </div>
+              </div>
+            ) : null}
+
+            {isOwner ? (
+              <div className="mt-6">
+                <h4 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Invite teammates</h4>
+                <form className="mt-3 flex flex-col gap-3 sm:flex-row" onSubmit={handleInvite}>
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      value={inviteUsername}
+                      onChange={(event) => setInviteUsername(event.target.value)}
+                      placeholder="Enter username"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50 dark:placeholder:text-slate-500"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={inviting}
+                  >
+                    <UserPlusIcon className="h-4 w-4" />
+                    {inviting ? 'Inviting...' : 'Send invite'}
+                  </button>
+                </form>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </section>

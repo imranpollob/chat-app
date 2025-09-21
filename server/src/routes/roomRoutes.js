@@ -8,7 +8,9 @@ const {
   inviteUser,
   getMessages,
   getJoinedRooms,
-  discoverRooms
+  discoverRooms,
+  getMembers,
+  updateMember
 } = require('../controllers/roomController');
 
 const router = express.Router();
@@ -18,6 +20,8 @@ router.get('/joined', authMiddleware(), getJoinedRooms);
 router.get('/discover', authMiddleware(false), discoverRooms);
 router.post('/', authMiddleware(), createRoom);
 router.get('/:roomId/messages', authMiddleware(false), getMessages);
+router.get('/:roomId/members', authMiddleware(), getMembers);
+router.post('/:roomId/members', authMiddleware(), updateMember);
 router.get('/:roomId/requests', authMiddleware(), getPendingRequests);
 router.post('/:roomId/requests', authMiddleware(), handleJoinRequest);
 router.post('/:roomId/invite', authMiddleware(), inviteUser);
