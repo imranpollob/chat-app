@@ -37,6 +37,9 @@ const DiscoverFilters = ({
             className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
           >
             <option value="all">All rooms</option>
+            <option value="owner">Owner</option>
+            <option value="moderator">Moderator</option>
+            <option value="member">Member</option>
             <option value="public">Public</option>
             <option value="request">Request to Join</option>
           </select>

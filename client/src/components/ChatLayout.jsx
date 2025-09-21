@@ -1,3 +1,4 @@
+import filterDiscoverRooms from '../lib/filterDiscoverRooms';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dialog, Menu, Transition } from '@headlessui/react';
 import { Bars3Icon, MoonIcon, SunIcon, PlusIcon, ChatBubbleLeftRightIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
@@ -329,6 +330,15 @@ const ChatLayout = () => {
       type: discoverTypeInput
     };
     setDiscoverFilter(nextFilter);
+  };
+
+  // Immediate filter on type change
+  const handleDiscoverTypeChange = (type) => {
+    setDiscoverTypeInput(type);
+    setDiscoverFilter({
+      search: discoverSearchInput.trim(),
+      type
+    });
   };
 
   const handleResetDiscover = () => {
@@ -866,12 +876,17 @@ const ChatLayout = () => {
         searchValue={discoverSearchInput}
         onSearchChange={setDiscoverSearchInput}
         typeValue={discoverTypeInput}
-        onTypeChange={setDiscoverTypeInput}
+        onTypeChange={handleDiscoverTypeChange}
         onSubmit={handleDiscoverSearch}
         onReset={handleResetDiscover}
         onCreateRoom={() => setIsCreateRoomOpen(true)}
       />
-      <DiscoverGrid loading={discoverLoading} rooms={discoverRooms} onSelect={setSelectedDiscoverRoom} />
+      <DiscoverGrid
+        loading={discoverLoading}
+        rooms={filterDiscoverRooms(discoverRooms, discoverTypeInput, user)}
+        onSelect={setSelectedDiscoverRoom}
+      />
+
     </section>
   );
 
