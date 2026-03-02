@@ -2,6 +2,15 @@
 
 Chatie is a modern, real-time chat application built with the MERN stack. Users can create and moderate rooms with granular privacy controls, collaborate in real time through Socket.IO, and manage membership through an intuitive, responsive UI.
 
+## Key Features
+
+- **Secure Authentication** – JWT-based login/registration with hashed credentials.
+- **Advanced Room Privacy** – Public, private, and request-to-join room types granting flexible visibility.
+- **Comprehensive Moderation** – Room owners can appoint moderators, manage pending join requests, and ban troublesome users.
+- **Real-time Chat** – Live messaging, presence updates, and instant moderation signals delivered through Socket.IO.
+- **Persistent History** – All messages, rooms, and user data are securely stored in MongoDB.
+- **Modern & Responsive UI** – A beautifully designed interface using Tailwind CSS, featuring intuitive room discovery and management dashboards.
+
 ## Repository Structure
 
 ```
@@ -87,14 +96,6 @@ MONGO_URI=mongodb://127.0.0.1:27017/chat-app
 ```
 
 > Prefer Docker? Run `docker run --name chat-mongo -p 27017:27017 -d mongo:7.0` and keep the same URI.
-
-## Key Features
-
-- **Secure authentication** – JWT-based login/registration with hashed credentials.
-- **Room privacy controls** – Public, private, and request-to-join modes with owner management tooling.
-- **Real-time chat** – Socket.IO delivers live messaging, presence updates, and moderation signals.
-- **Persistent history** – Messages, rooms, and users stored in MongoDB with Mongoose models.
-- **Modern UI** – Tailwind-styled layout with room discovery, owner dashboards, and responsive design.
 
 ## Scripts
 
